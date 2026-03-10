@@ -2,7 +2,7 @@
 # Script untuk menjalankan AbsensiPro
 
 echo "==================================="
-echo "   AbsensiPro - Sistem Absensi    "
+echo "   ITRSSR- Sistem Absensi    "
 echo "==================================="
 
 # Cek apakah venv ada
@@ -21,7 +21,6 @@ pip install -r requirements.txt --quiet
 # Jalankan aplikasi
 echo ""
 echo "🚀 Menjalankan server di http://localhost:5000"
-echo "📌 Login Admin: admin@absensi.com / admin123"
 echo "🛑 Tekan Ctrl+C untuk berhenti"
 echo ""
 

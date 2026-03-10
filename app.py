@@ -18,7 +18,8 @@ app = Flask(__name__)
 app.secret_key = 'absensi-secret-key-2024'
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'photos')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+ALLOWED_LAMPIRAN   = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}   # <-- FIX: tambah pdf
 
 # ── PostgreSQL config ─────────────────────────────────────────────────────────
 DB_HOST = os.environ.get('DB_HOST', 'localhost')
@@ -1022,4 +1023,4 @@ def api_shift_by_dept(dept_id):
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=False, host='0.0.0.0', port=5030)
+    app.run(debug=True, host='0.0.0.0', port=5030)
