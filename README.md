@@ -62,7 +62,7 @@ absensi/
 ├── requirements.txt       # Dependencies
 ├── run.sh                 # Script runner
 ├── instance/
-│   └── absensi.db         # Database SQLite (auto-created)
+│   └── absensi.db         # Database PostgreSql (auto-created)
 ├── static/
 │   └── uploads/photos/    # Foto pegawai & absensi
 └── templates/
