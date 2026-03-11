@@ -59,10 +59,27 @@
       </div>
       {% endif %}
       {% if r.status=='pending' %}
+      {% if r.jenis=='Lupa Absen Pulang' %}
+      <!-- Khusus: Lupa Absen Pulang — isi jam keluar -->
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px;margin-bottom:8px">
+        <p style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:8px">⏰ Isi Jam Pulang</p>
+        <form method="POST" action="/admin/izin/{{ r.id }}/approve" style="display:flex;flex-direction:column;gap:8px">
+          <input type="hidden" name="override_jam" value="1">
+          <input type="time" name="jam_keluar" required
+            style="width:100%;padding:9px 12px;border:1.5px solid #bfdbfe;border-radius:9px;font-size:14px;font-weight:700;color:#1e293b;background:#fff">
+          <p style="font-size:10px;color:#64748b">Alasan: {{ r.alasan }}</p>
+          <div style="display:flex;gap:8px">
+            <button type="submit" style="flex:1;background:#10b981;color:#fff;font-weight:700;padding:10px;border-radius:10px;border:none;cursor:pointer;font-size:13px">✓ Setujui & Isi Jam</button>
+            <a href="/admin/izin/{{ r.id }}/reject" onclick="return confirm('Tolak laporan ini?')" style="flex:1;background:#ef4444;color:#fff;font-weight:700;padding:10px;border-radius:10px;font-size:13px;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">✗ Tolak</a>
+          </div>
+        </form>
+      </div>
+      {% else %}
       <div style="display:flex;gap:8px">
         <a href="/admin/izin/{{ r.id }}/approve" style="flex:1;background:#10b981;color:#fff;font-weight:700;padding:11px;border-radius:10px;font-size:13px;text-align:center;text-decoration:none">✓ Setujui</a>
         <a href="/admin/izin/{{ r.id }}/reject" onclick="return confirm('Tolak izin ini?')" style="flex:1;background:#ef4444;color:#fff;font-weight:700;padding:11px;border-radius:10px;font-size:13px;text-align:center;text-decoration:none">✗ Tolak</a>
       </div>
+      {% endif %}
       {% endif %}
     </div>
     {% else %}
@@ -131,10 +148,25 @@
           </td>
           <td style="padding:12px">
             {% if r.status=='pending' %}
+            {% if r.jenis=='Lupa Absen Pulang' %}
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;min-width:180px">
+              <p style="font-size:10px;font-weight:700;color:#1d4ed8;margin-bottom:6px">⏰ Isi Jam Pulang</p>
+              <form method="POST" action="/admin/izin/{{ r.id }}/approve" style="display:flex;flex-direction:column;gap:6px">
+                <input type="hidden" name="override_jam" value="1">
+                <input type="time" name="jam_keluar" required
+                  style="width:100%;padding:6px 10px;border:1.5px solid #bfdbfe;border-radius:8px;font-size:13px;font-weight:700;color:#1e293b;background:#fff">
+                <div style="display:flex;gap:5px">
+                  <button type="submit" style="flex:1;background:#10b981;color:#fff;font-weight:600;padding:6px;border-radius:7px;border:none;cursor:pointer;font-size:11px;white-space:nowrap">✓ Setujui</button>
+                  <a href="/admin/izin/{{ r.id }}/reject" onclick="return confirm('Tolak?')" style="flex:1;background:#ef4444;color:#fff;font-weight:600;padding:6px;border-radius:7px;font-size:11px;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">✗ Tolak</a>
+                </div>
+              </form>
+            </div>
+            {% else %}
             <div style="display:flex;gap:6px">
               <a href="/admin/izin/{{ r.id }}/approve" style="background:#10b981;color:#fff;font-weight:600;padding:6px 12px;border-radius:8px;font-size:12px;text-decoration:none;white-space:nowrap">✓ Setujui</a>
               <a href="/admin/izin/{{ r.id }}/reject" onclick="return confirm('Tolak izin ini?')" style="background:#ef4444;color:#fff;font-weight:600;padding:6px 12px;border-radius:8px;font-size:12px;text-decoration:none;white-space:nowrap">✗ Tolak</a>
             </div>
+            {% endif %}
             {% else %}
             <span style="font-size:12px;color:#94a3b8">Selesai</span>
             {% endif %}

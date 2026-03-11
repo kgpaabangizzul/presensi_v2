@@ -18,7 +18,7 @@ app = Flask(__name__)
 app.secret_key = 'absensi-secret-key-2024'
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'photos')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_LAMPIRAN   = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}   # <-- FIX: tambah pdf
 
 # ── PostgreSQL config ─────────────────────────────────────────────────────────
@@ -27,7 +27,6 @@ DB_PORT = os.environ.get('DB_PORT', '5432')
 DB_NAME = os.environ.get('DB_NAME', 'presensi')
 DB_USER = os.environ.get('DB_USER', 'presensi')
 DB_PASS = os.environ.get('DB_PASS', 'presensi123')
-# ─────────────────────────────────────────────────────────────────────────────
 
 def get_db():
     conn = psycopg2.connect(
@@ -38,12 +37,10 @@ def get_db():
     return conn
 
 def fetchone(cur):
-    """Return a dict or None from cursor."""
     row = cur.fetchone()
     return dict(row) if row else None
 
 def fetchall(cur):
-    """Return list of dicts from cursor."""
     return [dict(r) for r in cur.fetchall()]
 
 def init_db():
@@ -156,7 +153,6 @@ def init_db():
         )
     """)
 
-    # Seed data
     cur.execute("INSERT INTO settings (id, nama_perusahaan) VALUES (1, 'PT. Absensi Digital') ON CONFLICT DO NOTHING")
 
     admin_pass = generate_password_hash('admin123')
@@ -188,6 +184,10 @@ def init_db():
 def allowed_file(fn):
     return '.' in fn and fn.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def allowed_lampiran(fn):
+    """FIX: cek ekstensi untuk lampiran izin (termasuk PDF)"""
+    return '.' in fn and fn.rsplit('.', 1)[1].lower() in ALLOWED_LAMPIRAN
+
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -216,6 +216,40 @@ def get_user_shift(uid, conn):
             'jam_keluar': settings['jam_keluar'] if settings else '17:00',
             'toleransi_menit': 15, 'nama': 'Default', 'id': None}
 
+def get_active_shift(uid, conn):
+    """Deteksi shift yang sedang berjalan berdasarkan jam sekarang."""
+    now = datetime.now().strftime('%H:%M')
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM users WHERE id=%s", (uid,))
+    user = cur.fetchone()
+    if user and user['departemen_id']:
+        cur.execute("""SELECT s.* FROM shift s
+            JOIN departemen_shift ds ON s.id=ds.shift_id
+            WHERE ds.departemen_id=%s AND s.aktif=1 ORDER BY s.jam_masuk""", (user['departemen_id'],))
+        shifts = cur.fetchall()
+    else:
+        cur.execute("SELECT * FROM shift WHERE aktif=1 ORDER BY jam_masuk")
+        shifts = cur.fetchall()
+    if not shifts:
+        cur.execute("SELECT * FROM shift WHERE aktif=1 ORDER BY jam_masuk")
+        shifts = cur.fetchall()
+    for s in shifts:
+        jm, jk = s['jam_masuk'], s['jam_keluar']
+        if jm <= jk:
+            if jm <= now <= jk:
+                cur.close(); return dict(s)
+        else:
+            if now >= jm or now <= jk:
+                cur.close(); return dict(s)
+    upcoming = next((s for s in shifts if s['jam_masuk'] > now), None)
+    if upcoming:
+        cur.close(); return dict(upcoming)
+    if shifts:
+        cur.close(); return dict(shifts[0])
+    cur.close()
+    return {'jam_masuk':'08:00','jam_keluar':'17:00','toleransi_menit':15,'nama':'Default','id':None}
+
+
 def login_required(f):
     @wraps(f)
     def dec(*a, **kw):
@@ -233,7 +267,6 @@ def admin_required(f):
     return dec
 
 def q(conn):
-    """Shortcut: return a RealDictCursor."""
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -335,7 +368,23 @@ def dashboard():
     cur.execute("SELECT * FROM settings WHERE id=1")
     settings = cur.fetchone()
 
-    user_shift = get_user_shift(uid, conn)
+    user_shift = get_active_shift(uid, conn)  # otomatis deteksi shift berjalan
+
+    # Ambil daftar shift tersedia untuk user (dari departemen atau semua shift aktif)
+    cur.execute("SELECT * FROM users WHERE id=%s", (uid,))
+    u_raw = cur.fetchone()
+    if u_raw and u_raw['departemen_id']:
+        cur.execute("""SELECT s.* FROM shift s
+            JOIN departemen_shift ds ON s.id=ds.shift_id
+            WHERE ds.departemen_id=%s AND s.aktif=1 ORDER BY s.jam_masuk""", (u_raw['departemen_id'],))
+        available_shifts = cur.fetchall()
+        if not available_shifts:
+            cur.execute("SELECT * FROM shift WHERE aktif=1 ORDER BY jam_masuk")
+            available_shifts = cur.fetchall()
+    else:
+        cur.execute("SELECT * FROM shift WHERE aktif=1 ORDER BY jam_masuk")
+        available_shifts = cur.fetchall()
+
     cur.close(); conn.close()
 
     if not user:
@@ -345,7 +394,7 @@ def dashboard():
 
     return render_template('dashboard.html', absen_today=absen_today, stats=stats,
         riwayat=[dict(r) for r in riwayat], user=user, settings=settings,
-        today=today, user_shift=user_shift)
+        today=today, user_shift=user_shift, available_shifts=available_shifts)
 
 @app.route('/absen', methods=['POST'])
 @login_required
@@ -355,6 +404,7 @@ def absen():
     lat = request.form.get('lat', type=float)
     lng = request.form.get('lng', type=float)
     tipe = request.form.get('tipe')
+    shift_id_form = request.form.get('shift_id') or None
     conn = get_db(); cur = q(conn)
 
     cur.execute("SELECT * FROM settings WHERE id=1")
@@ -363,7 +413,6 @@ def absen():
     off_lng = settings['office_lng'] if settings else 106.8456
     max_dist = settings['max_distance'] if settings else 100
 
-    user_shift = get_user_shift(uid, conn)
     jarak = haversine(lat, lng, off_lat, off_lng) if lat and lng else None
 
     if jarak is not None and jarak > max_dist:
@@ -380,17 +429,6 @@ def absen():
             f.save(os.path.join(app.config['UPLOAD_FOLDER'], fn))
             foto_path = fn
 
-    status = 'hadir'
-    toleransi = user_shift.get('toleransi_menit', 15)
-    jam_shift = user_shift.get('jam_masuk', '08:00')
-    if tipe == 'masuk':
-        from datetime import time as dtime
-        h, m = map(int, jam_shift.split(':'))
-        batas = datetime.combine(date.today(), dtime(h, m)) + timedelta(minutes=toleransi)
-        if datetime.now() > batas: status = 'telat'
-
-    shift_id = user_shift.get('id')
-
     cur.execute("SELECT * FROM absensi WHERE user_id=%s AND tanggal=%s", (uid, today))
     absen_today = cur.fetchone()
 
@@ -398,24 +436,90 @@ def absen():
         if absen_today:
             flash('Sudah absen masuk hari ini!', 'warning')
         else:
+            # Gunakan shift yang dipilih user, atau fallback ke shift aktif
+            shift_id = shift_id_form
+            if shift_id:
+                cur.execute("SELECT * FROM shift WHERE id=%s AND aktif=1", (shift_id,))
+                chosen_shift = cur.fetchone()
+            else:
+                chosen_shift = get_active_shift(uid, conn)
+                shift_id = chosen_shift.get('id') if chosen_shift else None
+
+            # Cek telat berdasarkan shift yang dipilih
+            status = 'hadir'
+            if chosen_shift:
+                from datetime import time as dtime
+                h, m = map(int, chosen_shift['jam_masuk'].split(':'))
+                toleransi = chosen_shift.get('toleransi_menit', 15)
+                batas = datetime.combine(date.today(), dtime(h, m)) + timedelta(minutes=toleransi)
+                if datetime.now() > batas: status = 'telat'
+
             cur.execute("""INSERT INTO absensi (user_id,tanggal,jam_masuk,foto_masuk,lat_masuk,lng_masuk,jarak_masuk,shift_id,status)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (uid, today, now, foto_path, lat, lng, jarak, shift_id, status))
             conn.commit()
             flash(f'Absen masuk berhasil! Jarak: {jarak:.0f}m' if jarak else 'Absen masuk berhasil!', 'success')
+
     elif tipe == 'keluar':
         if not absen_today:
             flash('Belum absen masuk!', 'warning')
         elif absen_today['jam_keluar']:
             flash('Sudah absen keluar!', 'warning')
         else:
-            cur.execute("""UPDATE absensi SET jam_keluar=%s,foto_keluar=%s,lat_keluar=%s,lng_keluar=%s,jarak_keluar=%s
-                WHERE user_id=%s AND tanggal=%s""", (now, foto_path, lat, lng, jarak, uid, today))
+            # LOCK shift keluar = shift masuk, abaikan pilihan user
+            shift_id = absen_today['shift_id']
+            cur.execute("""UPDATE absensi SET jam_keluar=%s,foto_keluar=%s,lat_keluar=%s,lng_keluar=%s,jarak_keluar=%s,shift_id=%s
+                WHERE user_id=%s AND tanggal=%s""", (now, foto_path, lat, lng, jarak, shift_id, uid, today))
             conn.commit()
             flash('Absen keluar berhasil!', 'success')
 
     cur.close(); conn.close()
     return redirect(url_for('dashboard'))
+
+@app.route('/lupa-absen', methods=['POST'])
+@login_required
+def lupa_absen():
+    """User lapor lupa absen pulang — admin yang approve."""
+    uid = session['user_id']
+    tanggal = request.form.get('tanggal', date.today().isoformat())
+    alasan = request.form.get('alasan', 'Lupa absen pulang')
+    jam_keluar_manual = request.form.get('jam_keluar_manual', '').strip()
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM absensi WHERE user_id=%s AND tanggal=%s", (uid, tanggal))
+    absen = cur.fetchone()
+    if not absen:
+        flash('Tidak ada data absen masuk pada tanggal tersebut.', 'error')
+    elif absen['jam_keluar']:
+        flash('Absen pulang sudah tercatat.', 'warning')
+    else:
+        # Simpan sebagai izin dengan jenis khusus "Lupa Absen Pulang"
+        cur.execute("""INSERT INTO izin (user_id,tanggal_mulai,tanggal_selesai,jenis,alasan,status)
+            VALUES (%s,%s,%s,%s,%s,'pending')""",
+            (uid, tanggal, tanggal, 'Lupa Absen Pulang',
+             f"{alasan} | Jam keluar: {jam_keluar_manual if jam_keluar_manual else 'tidak diisi'}"))
+        conn.commit()
+        flash('Laporan lupa absen pulang berhasil dikirim. Tunggu konfirmasi admin.', 'success')
+    cur.close(); conn.close()
+    return redirect(url_for('dashboard'))
+
+@app.route('/admin/izin/<int:iid>/approve-lupa-absen', methods=['POST'])
+@admin_required
+def approve_lupa_absen(iid):
+    """Admin setujui lupa absen pulang — isi jam keluar manual."""
+    jam_keluar = request.form.get('jam_keluar', '17:00') + ':00'
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM izin WHERE id=%s", (iid,))
+    iz = cur.fetchone()
+    if iz:
+        cur.execute("UPDATE izin SET status='approved',catatan_admin=%s WHERE id=%s",
+            (f'Disetujui admin, jam keluar: {jam_keluar}', iid))
+        cur.execute("""UPDATE absensi SET jam_keluar=%s,keterangan='Lupa absen pulang — disetujui admin'
+            WHERE user_id=%s AND tanggal=%s AND jam_keluar IS NULL""",
+            (jam_keluar, iz['user_id'], str(iz['tanggal_mulai'])))
+        conn.commit()
+        flash(f'Lupa absen pulang disetujui. Jam keluar: {jam_keluar}', 'success')
+    cur.close(); conn.close()
+    return redirect(url_for('admin_izin'))
 
 @app.route('/riwayat')
 @login_required
@@ -430,6 +534,7 @@ def riwayat():
     cur.close(); conn.close()
     return render_template('riwayat.html', data=data, bulan=bulan)
 
+# ── FIX: Route izin dengan allowed_lampiran ───────────────────────────────────
 @app.route('/izin', methods=['GET','POST'])
 @login_required
 def izin():
@@ -437,18 +542,29 @@ def izin():
     if request.method == 'POST':
         conn = get_db(); cur = q(conn)
         lamp = None
+
         if 'lampiran' in request.files:
             f = request.files['lampiran']
-            if f and f.filename and allowed_file(f.filename):
-                fn = secure_filename(f"{uid}_izin_{datetime.now().strftime('%Y%m%d%H%M%S')}.{f.filename.rsplit('.',1)[-1]}")
-                f.save(os.path.join(app.config['UPLOAD_FOLDER'], fn))
-                lamp = fn
-        cur.execute("INSERT INTO izin (user_id,tanggal_mulai,tanggal_selesai,jenis,alasan,lampiran) VALUES (%s,%s,%s,%s,%s,%s)",
+            if f and f.filename:
+                if allowed_lampiran(f.filename):
+                    ext = f.filename.rsplit('.', 1)[-1].lower()
+                    fn = secure_filename(f"{uid}_izin_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+                    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+                    f.save(os.path.join(app.config['UPLOAD_FOLDER'], fn))
+                    lamp = fn
+                else:
+                    flash('Format file tidak didukung. Gunakan JPG, PNG, atau PDF.', 'error')
+                    cur.close(); conn.close()
+                    return redirect(url_for('izin'))
+
+        cur.execute("""INSERT INTO izin (user_id,tanggal_mulai,tanggal_selesai,jenis,alasan,lampiran)
+            VALUES (%s,%s,%s,%s,%s,%s)""",
             (uid, request.form['tanggal_mulai'], request.form['tanggal_selesai'],
              request.form['jenis'], request.form['alasan'], lamp))
         conn.commit(); cur.close(); conn.close()
         flash('Permohonan izin berhasil dikirim!', 'success')
         return redirect(url_for('izin'))
+
     conn = get_db(); cur = q(conn)
     cur.execute("SELECT * FROM izin WHERE user_id=%s ORDER BY created_at DESC", (uid,))
     data = cur.fetchall()
@@ -846,7 +962,7 @@ def admin_izin():
     cur.close(); conn.close()
     return render_template('admin/izin.html', data=data)
 
-@app.route('/admin/izin/<int:iid>/<action>')
+@app.route('/admin/izin/<int:iid>/<action>', methods=['GET','POST'])
 @admin_required
 def proses_izin(iid, action):
     conn = get_db(); cur = q(conn)
@@ -855,18 +971,44 @@ def proses_izin(iid, action):
     if iz and action in ['approve','reject']:
         cur.execute("UPDATE izin SET status=%s WHERE id=%s",
             ('approved' if action=='approve' else 'rejected', iid))
+
         if action == 'approve':
-            d1 = datetime.strptime(str(iz['tanggal_mulai']), '%Y-%m-%d')
-            d2 = datetime.strptime(str(iz['tanggal_selesai']), '%Y-%m-%d')
-            cur2 = conn.cursor()
-            cur_date = d1
-            while cur_date <= d2:
-                cur2.execute("""INSERT INTO absensi (user_id,tanggal,status,keterangan)
-                    VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
-                    (iz['user_id'], cur_date.date().isoformat(), 'izin', iz['jenis']))
-                cur_date += timedelta(days=1)
-            cur2.close()
-        conn.commit(); flash('Izin diproses!', 'success')
+            if iz['jenis'] == 'Lupa Absen Pulang':
+                # Ambil jam keluar dari form (admin input) atau dari alasan
+                jam_keluar_input = request.form.get('jam_keluar', '').strip()
+                if jam_keluar_input:
+                    jam_keluar = jam_keluar_input + ':00' if len(jam_keluar_input) == 5 else jam_keluar_input
+                else:
+                    # Fallback: ekstrak dari alasan
+                    import re
+                    alasan = iz['alasan'] or ''
+                    m2 = re.search(r'Jam keluar[:\s]+(\d{1,2}:\d{2})', alasan)
+                    jam_keluar = (m2.group(1) + ':00') if m2 else '17:00:00'
+
+                tanggal = str(iz['tanggal_mulai'])
+                cur.execute("""UPDATE absensi SET jam_keluar=%s,
+                    keterangan='Lupa absen pulang — disetujui admin'
+                    WHERE user_id=%s AND tanggal=%s AND (jam_keluar IS NULL OR jam_keluar='')""",
+                    (jam_keluar, iz['user_id'], tanggal))
+                cur.execute("UPDATE izin SET catatan_admin=%s WHERE id=%s",
+                    (f'Jam keluar diisi: {jam_keluar}', iid))
+                flash(f'Lupa absen pulang disetujui. Jam keluar: {jam_keluar}', 'success')
+            else:
+                d1 = datetime.strptime(str(iz['tanggal_mulai']), '%Y-%m-%d')
+                d2 = datetime.strptime(str(iz['tanggal_selesai']), '%Y-%m-%d')
+                cur2 = conn.cursor()
+                cur_date = d1
+                while cur_date <= d2:
+                    cur2.execute("""INSERT INTO absensi (user_id,tanggal,status,keterangan)
+                        VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                        (iz['user_id'], cur_date.date().isoformat(), 'izin', iz['jenis']))
+                    cur_date += timedelta(days=1)
+                cur2.close()
+                flash('Izin disetujui!', 'success')
+        else:
+            flash('Izin ditolak!', 'info')
+
+        conn.commit()
     cur.close(); conn.close()
     return redirect(url_for('admin_izin'))
 

@@ -1,9 +1,62 @@
 {% extends 'layout.html' %}
-{% block page_title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard
+<!-- Modal Lupa Absen Pulang -->
+<div id="lupaModal" onclick="closeLupaModal()" style="display:none;position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);align-items:flex-end;justify-content:center">
+  <div onclick="event.stopPropagation()" style="background:#fff;width:100%;max-width:440px;border-radius:24px 24px 0 0;padding:0 0 24px">
+    <div style="display:flex;justify-content:center;padding:12px 0 4px">
+      <div style="width:36px;height:4px;background:#e2e8f0;border-radius:99px"></div>
+    </div>
+    <div style="padding:0 20px 16px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h3 style="font-size:16px;font-weight:700;color:#1e293b">⚠️ Lupa Absen Pulang</h3>
+        <p style="font-size:12px;color:#64748b;margin-top:2px">Laporan akan dikirim ke admin untuk disetujui</p>
+      </div>
+      <button onclick="closeLupaModal()" style="width:32px;height:32px;border-radius:99px;background:#f1f5f9;border:none;cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <form method="POST" action="/lupa-absen" style="padding:0 20px;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Tanggal</label>
+        <input type="date" name="tanggal" id="lupaTanggal" class="input-field" required>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Perkiraan Jam Pulang</label>
+        <input type="time" name="jam_keluar_manual" class="input-field" placeholder="contoh: 17:00">
+        <p style="font-size:11px;color:#94a3b8;margin-top:4px">Isi perkiraan jam Anda pulang (opsional)</p>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Alasan</label>
+        <textarea name="alasan" rows="2" class="input-field" placeholder="Contoh: Terburu-buru, lupa tap keluar..." style="resize:none;font-size:14px">Lupa absen pulang</textarea>
+      </div>
+      <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:10px 12px;display:flex;gap:8px">
+        <span style="flex-shrink:0">ℹ️</span>
+        <p style="font-size:11px;color:#92400e;line-height:1.5">Admin akan memverifikasi dan mengisi jam pulang Anda. Mohon pastikan data yang diisi benar.</p>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button type="button" onclick="closeLupaModal()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:13px;border-radius:12px;border:none;cursor:pointer">Batal</button>
+        <button type="submit" style="flex:1.5;background:#f59e0b;color:#fff;font-weight:700;padding:13px;border-radius:12px;border:none;cursor:pointer">Kirim Laporan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openLupaModal(){
+  // Set tanggal default = hari ini
+  const t = document.getElementById('lupaTanggal');
+  if(t) t.value = '{{ today }}';
+  document.getElementById('lupaModal').style.display='flex';
+  document.body.style.overflow='hidden';
+}
+function closeLupaModal(){
+  document.getElementById('lupaModal').style.display='none';
+  document.body.style.overflow='';
+}
+</script>
+{% endblock %}
 {% block content %}
 <div style="display:flex;flex-direction:column;gap:16px">
 
-  <!-- Profil header + absen button — mobile first -->
+  <!-- Profil header + absen button -->
   <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);border-radius:20px;padding:20px;color:#fff;position:relative;overflow:hidden">
     <div style="position:absolute;top:-20px;right:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.06)"></div>
     <div style="position:absolute;bottom:-30px;right:30px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.05)"></div>
@@ -22,13 +75,11 @@
         <p style="font-size:10px;color:#bfdbfe">{{ today }}</p>
       </div>
     </div>
-    <!-- Shift info -->
-    {% if user_shift and user_shift.nama != 'Default' %}
-    <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;backdrop-filter:blur(4px)">
+    <!-- Shift info — otomatis update saat shift dipilih di modal -->
+    <div id="shiftInfoBar" style="background:rgba(255,255,255,.12);border-radius:10px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;backdrop-filter:blur(4px)">
       <span style="font-size:14px">🕐</span>
-      <p style="font-size:12px;color:#e0f2fe">{{ user_shift.nama }} · {{ user_shift.jam_masuk }}–{{ user_shift.jam_keluar }}</p>
+      <p id="shiftInfoText" style="font-size:12px;color:#e0f2fe">{% if user_shift and user_shift.nama != 'Default' %}{{ user_shift.nama }} · {{ user_shift.jam_masuk }}–{{ user_shift.jam_keluar }}{% else %}Pilih shift saat absen{% endif %}</p>
     </div>
-    {% endif %}
     <!-- Absen buttons -->
     {% if not absen_today %}
     <button onclick="openAbsenModal('masuk')" style="width:100%;background:#10b981;color:#fff;font-weight:700;font-size:15px;padding:14px;border-radius:14px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 16px rgba(16,185,129,.4)">
@@ -44,10 +95,15 @@
           {% if absen_today.status=='hadir' %}<span class="badge-hadir">Hadir</span>{% elif absen_today.status=='telat' %}<span class="badge-telat">Terlambat</span>{% endif %}
         </div>
       </div>
-      <button onclick="openAbsenModal('keluar')" style="flex:1;background:#ef4444;color:#fff;font-weight:700;font-size:14px;padding:14px;border-radius:14px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
-        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-        Absen Keluar
-      </button>
+      <div style="display:flex;flex-direction:column;gap:6px;flex:1">
+        <button onclick="openAbsenModal('keluar')" style="width:100%;background:#ef4444;color:#fff;font-weight:700;font-size:14px;padding:12px;border-radius:12px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+          <svg style="width:16px;height:16px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          Absen Keluar
+        </button>
+        <button onclick="openLupaModal()" style="width:100%;background:rgba(255,255,255,.15);color:#fde68a;font-weight:600;font-size:11px;padding:7px;border-radius:10px;border:1px solid rgba(253,230,138,.3);cursor:pointer">
+          ⚠️ Lupa Absen Pulang?
+        </button>
+      </div>
     </div>
     {% else %}
     <div style="display:flex;gap:10px">
@@ -117,7 +173,7 @@
           </div>
           <div>
             <p style="font-size:13px;font-weight:600;color:#1e293b">{{ r.tanggal }}</p>
-            <p style="font-size:11px;color:#94a3b8;margin-top:1px">{{ r.jam_masuk or '-' }}{% if r.jam_keluar %} → {{ r.jam_keluar }}{% endif %}</p>
+            <p style="font-size:11px;color:#94a3b8;margin-top:1px">{{ r.jam_masuk or '-' }}{% if r.jam_keluar %} → {{ r.jam_keluar }}{% endif %}{% if r.shift_nama %} · {{ r.shift_nama }}{% endif %}</p>
           </div>
         </div>
         <div style="text-align:right">
@@ -135,10 +191,10 @@
   </div>
 </div>
 
-<!-- Modal Absen - full screen on mobile -->
+<!-- Modal Absen -->
 <div id="absenModal" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);align-items:flex-end;justify-content:center" class="sm:items-center">
   <div style="background:#fff;width:100%;max-width:440px;border-radius:24px 24px 0 0;max-height:92dvh;overflow-y:auto" class="sm:rounded-3xl anim-slide-up">
-    <!-- Modal handle (mobile) -->
+    <!-- Handle -->
     <div class="sm:hidden" style="display:flex;justify-content:center;padding:12px 0 4px">
       <div style="width:36px;height:4px;background:#e2e8f0;border-radius:99px"></div>
     </div>
@@ -148,18 +204,49 @@
         <svg style="width:16px;height:16px;color:#64748b" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
       </button>
     </div>
-    <form method="POST" action="/absen" enctype="multipart/form-data" id="absenFormData" style="padding:0 20px 20px">
+    <form method="POST" action="/absen" enctype="multipart/form-data" id="absenFormData" style="padding:0 20px 24px">
       <input type="hidden" name="tipe" id="tipe">
       <input type="hidden" name="lat" id="lat">
       <input type="hidden" name="lng" id="lng">
       <input type="file" name="foto" id="fotoInput" accept="image/*" style="display:none">
 
-      <!-- Camera area -->
+      <!-- ═══ PILIH SHIFT ═══ -->
+      <div id="shiftSection" style="margin-bottom:14px">
+        <label style="display:block;font-size:13px;font-weight:700;color:#374151;margin-bottom:8px">🕐 Pilih Shift</label>
+        <div id="shiftList" style="display:flex;flex-direction:column;gap:8px">
+          {% for s in available_shifts %}
+          <label style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:2px solid #e2e8f0;border-radius:14px;cursor:pointer;transition:all .15s" 
+            onclick="selectShift(this, {{ s.id }}, '{{ s.nama }}', '{{ s.jam_masuk }}', '{{ s.jam_keluar }}')">
+            <input type="radio" name="shift_id" value="{{ s.id }}" style="display:none"
+              {% if user_shift and user_shift.id == s.id %}checked{% endif %}>
+            <div style="width:36px;height:36px;border-radius:10px;background:{{ s.warna }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <div style="width:10px;height:10px;border-radius:50%;background:{{ s.warna }}"></div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <p style="font-size:13px;font-weight:700;color:#1e293b">{{ s.nama }}</p>
+              <p style="font-size:11px;color:#64748b;margin-top:1px">{{ s.jam_masuk }} – {{ s.jam_keluar }} · Toleransi {{ s.toleransi_menit }} menit</p>
+            </div>
+            <div class="shift-check" style="width:20px;height:20px;border-radius:99px;border:2px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s">
+              <svg style="width:10px;height:10px;color:#fff;display:none" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            </div>
+          </label>
+          {% else %}
+          <!-- Tidak ada shift tersedia, tampilkan input tersembunyi dengan shift_id kosong -->
+          <input type="hidden" name="shift_id" value="">
+          <div style="padding:12px;background:#f8fafc;border-radius:12px;text-align:center;color:#94a3b8;font-size:13px">
+            ℹ️ Tidak ada shift — menggunakan jam default
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <!-- ═══════════════════ -->
+
+      <!-- Camera -->
       <div style="border-radius:16px;overflow:hidden;background:#0f172a;position:relative;margin-bottom:12px">
-        <video id="video" style="width:100%;display:block;max-height:240px;object-fit:cover" autoplay muted playsinline></video>
-        <canvas id="canvas" style="display:none;width:100%;max-height:240px;object-fit:cover"></canvas>
-        <img id="captured" style="display:none;width:100%;max-height:240px;object-fit:cover">
-        <div id="cameraOff" style="display:none;padding:40px;text-align:center;color:#94a3b8">
+        <video id="video" style="width:100%;display:block;max-height:220px;object-fit:cover" autoplay muted playsinline></video>
+        <canvas id="canvas" style="display:none;width:100%;max-height:220px;object-fit:cover"></canvas>
+        <img id="captured" style="display:none;width:100%;max-height:220px;object-fit:cover">
+        <div id="cameraOff" style="display:none;padding:36px;text-align:center;color:#94a3b8">
           <p style="font-size:32px;margin-bottom:6px">📷</p>
           <p style="font-size:13px">Kamera tidak tersedia</p>
         </div>
@@ -184,19 +271,12 @@
           <div style="flex:1">
             <p style="font-weight:700;color:#dc2626;font-size:13px">Di Luar Jangkauan!</p>
             <p id="radiusDetail" style="font-size:12px;color:#ef4444;margin-top:3px;line-height:1.4"></p>
-            <div style="margin-top:8px;background:#fecaca;border-radius:8px;height:6px;overflow:hidden">
-              <div id="radiusBar" style="height:100%;background:#dc2626;border-radius:8px;transition:width .4s"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin-top:4px">
-              <span style="font-size:10px;color:#ef4444">0m</span>
-              <span id="radiusMax" style="font-size:10px;color:#ef4444;font-weight:600"></span>
-            </div>
           </div>
         </div>
       </div>
 
       <!-- Radius OK -->
-      <div id="radiusOK" style="display:none;background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;padding:12px;margin-bottom:10px;display:none;align-items:center;gap:10px">
+      <div id="radiusOK" style="display:none;background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;padding:12px;margin-bottom:10px;align-items:center;gap:10px">
         <div style="width:36px;height:36px;background:#dcfce7;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <svg style="width:18px;height:18px;color:#16a34a" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </div>
@@ -207,7 +287,7 @@
         <div style="font-size:18px;font-weight:800;color:#16a34a" id="radiusOKJarak"></div>
       </div>
 
-      <!-- Buttons -->
+      <!-- Submit -->
       <div style="display:flex;gap:10px;margin-top:4px">
         <button type="button" onclick="closeModal()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:14px;border-radius:14px;border:none;cursor:pointer;font-size:14px">Batal</button>
         <button type="submit" id="btnSubmit" disabled style="flex:1.6;background:#2563eb;color:#fff;font-weight:700;padding:14px;border-radius:14px;border:none;cursor:pointer;font-size:14px;opacity:.45">Kirim Absen</button>
@@ -215,7 +295,10 @@
     </form>
   </div>
 </div>
-<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+<style>
+@keyframes spin{to{transform:rotate(360deg)}}
+.shift-label-selected{border-color:#2563eb!important;background:#eff6ff!important}
+</style>
 
 <script>
 // Clock
@@ -234,15 +317,46 @@ new Chart(document.getElementById('absenChart'),{type:'bar',data:{labels,dataset
   {label:'Izin',data:izin,backgroundColor:'#3b82f6',borderRadius:3}
 ]},options:{responsive:true,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:10}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:9}}},y:{stacked:true,ticks:{stepSize:1,font:{size:10}}}}}});
 
+// Shift selection
+function selectShift(label, id, nama, masuk, keluar){
+  // Reset semua
+  document.querySelectorAll('#shiftList label').forEach(el=>{
+    el.style.borderColor='#e2e8f0';
+    el.style.background='#fff';
+    el.querySelector('.shift-check').style.background='#fff';
+    el.querySelector('.shift-check').style.borderColor='#e2e8f0';
+    el.querySelector('.shift-check svg').style.display='none';
+    el.querySelector('input[type=radio]').checked=false;
+  });
+  // Aktifkan yang dipilih
+  label.style.borderColor='#2563eb';
+  label.style.background='#eff6ff';
+  label.querySelector('.shift-check').style.background='#2563eb';
+  label.querySelector('.shift-check').style.borderColor='#2563eb';
+  label.querySelector('.shift-check svg').style.display='block';
+  label.querySelector('input[type=radio]').checked=true;
+  selectedShiftId=id;
+  // Update shift info bar di header
+  const bar=document.getElementById("shiftInfoText");
+  if(bar && nama) bar.textContent=nama+" · "+masuk+"–"+keluar;
+  checkReady();
+}
+
+// Auto-select shift default user jika ada
+let selectedShiftId = {{ user_shift.id if user_shift and user_shift.id else 'null' }};
+
 // Modal
 let stream=null,photoBlob=null,gpsReady=false,radiusOKFlag=false;
 const OFFICE_LAT={{settings.office_lat if settings else -6.2088}};
 const OFFICE_LNG={{settings.office_lng if settings else 106.8456}};
 const MAX_DIST={{settings.max_distance if settings else 100}};
 
+// Data shift masuk hari ini dari server
+const absenShiftId = {{ absen_today.shift_id if absen_today and absen_today.shift_id else 'null' }};
+
 function openAbsenModal(tipe){
-  const m=document.getElementById('absenModal');
-  m.style.display='flex';
+  const modal=document.getElementById('absenModal');
+  modal.style.display='flex';
   document.getElementById('tipe').value=tipe;
   document.getElementById('modalTitle').textContent=tipe==='masuk'?'📍 Absen Masuk':'🚪 Absen Keluar';
   document.getElementById('btnSubmit').disabled=true;
@@ -251,26 +365,88 @@ function openAbsenModal(tipe){
   document.getElementById('radiusWarning').style.display='none';
   document.getElementById('radiusOK').style.display='none';
   photoBlob=null;gpsReady=false;radiusOKFlag=false;
-  setTimeout(()=>m.querySelector('div[style*="border-radius:24px"]').classList.add('anim-slide-up'),10);
+
+  const shiftSection = document.getElementById('shiftSection');
+
+  if(tipe === 'keluar' && absenShiftId) {
+    // LOCK: shift keluar = shift masuk, tidak bisa diganti
+    shiftSection.style.display='block';
+    document.querySelectorAll('#shiftList label').forEach(el => {
+      const radio = el.querySelector('input[type=radio]');
+      if(radio && parseInt(radio.value) === absenShiftId) {
+        // Aktifkan shift masuk
+        const onclickAttr = el.getAttribute("onclick") || "";
+        const m2 = onclickAttr.match(/selectShift\(this,\s*\d+,\s*'([^']*)',\s*'([^']*)',\s*'([^']*)'\)/);
+        if(m2) selectShift(el, absenShiftId, m2[1], m2[2], m2[3]);
+        el.style.opacity='1';
+        el.style.cursor='default';
+      } else {
+        // Disable shift lain
+        el.style.opacity='0.35';
+        el.style.cursor='not-allowed';
+        el.onclick=null;
+      }
+    });
+    // Tambah label keterangan
+    let lockInfo = document.getElementById('shiftLockInfo');
+    if(!lockInfo){
+      lockInfo = document.createElement('p');
+      lockInfo.id = 'shiftLockInfo';
+      lockInfo.style.cssText='font-size:11px;color:#f59e0b;margin-top:6px;font-weight:600';
+      lockInfo.textContent='🔒 Shift keluar dikunci sesuai shift masuk';
+      document.getElementById('shiftSection').appendChild(lockInfo);
+    }
+    lockInfo.style.display='block';
+  } else {
+    // MASUK: bebas pilih shift, reset semua
+    shiftSection.style.display='block';
+    document.querySelectorAll('#shiftList label').forEach(el => {
+      el.style.opacity='1';
+      el.style.cursor='pointer';
+      // restore onclick
+      const radio = el.querySelector('input[type=radio]');
+      const sid = radio ? parseInt(radio.value) : 0;
+      const txt = el.querySelector('p')?.textContent || '';
+      // re-attach onclick via dataset
+      const oc = el.dataset.onclick;
+      if(oc) el.setAttribute('onclick', oc);
+    });
+    const lockInfo = document.getElementById('shiftLockInfo');
+    if(lockInfo) lockInfo.style.display='none';
+
+    // Auto-pilih shift default
+    const defaultLabel = document.querySelector('#shiftList label:has(input[type=radio]:checked)') ||
+                         document.querySelector('#shiftList label');
+    if(defaultLabel) {
+      const radio = defaultLabel.querySelector('input[type=radio]');
+      const onclickAttr = defaultLabel.getAttribute("onclick") || "";
+      const m3 = onclickAttr.match(/selectShift\(this,\s*\d+,\s*'([^']*)',\s*'([^']*)',\s*'([^']*)'\)/);
+      if(radio && m3) selectShift(defaultLabel, parseInt(radio.value), m3[1], m3[2], m3[3]);
+      else if(radio) selectShift(defaultLabel, parseInt(radio.value), '', '', '');
+    }
+  }
+
   startCamera();getGPS();
   document.body.style.overflow='hidden';
 }
+
 function closeModal(){
   document.getElementById('absenModal').style.display='none';
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   document.body.style.overflow='';
-  // reset
   document.getElementById('video').style.display='block';
   document.getElementById('captured').style.display='none';
   document.getElementById('canvas').style.display='none';
   document.getElementById('btnCapture').style.display='';
   document.getElementById('btnRetake').style.display='none';
 }
+
 function startCamera(){
   navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false})
     .then(s=>{stream=s;document.getElementById('video').srcObject=s;document.getElementById('cameraOff').style.display='none'})
     .catch(()=>{document.getElementById('video').style.display='none';document.getElementById('cameraOff').style.display='block';photoBlob='fallback';checkReady();});
 }
+
 function capture(){
   const v=document.getElementById('video'),c=document.getElementById('canvas');
   c.width=v.videoWidth||640;c.height=v.videoHeight||480;
@@ -288,6 +464,7 @@ function capture(){
   },'image/jpeg',.85);
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
 }
+
 function retake(){
   document.getElementById('captured').style.display='none';
   document.getElementById('video').style.display='block';
@@ -295,11 +472,13 @@ function retake(){
   document.getElementById('btnRetake').style.display='none';
   photoBlob=null;checkReady();startCamera();
 }
+
 function hvs(la1,lo1,la2,lo2){
   const R=6371000,p1=la1*Math.PI/180,p2=la2*Math.PI/180;
   const dp=(la2-la1)*Math.PI/180,dl=(lo2-lo1)*Math.PI/180;
   return 2*R*Math.atan2(Math.sqrt(Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2),Math.sqrt(1-Math.sin(dp/2)**2-Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2));
 }
+
 function getGPS(){
   if(!navigator.geolocation){document.getElementById('gpsText').textContent='GPS tidak didukung';gpsReady=true;radiusOKFlag=true;checkReady();return;}
   navigator.geolocation.getCurrentPosition(pos=>{
@@ -313,8 +492,6 @@ function getGPS(){
       document.getElementById('radiusWarning').style.display='flex';
       document.getElementById('radiusOK').style.display='none';
       document.getElementById('radiusDetail').textContent=`Jarak Anda ${j.toFixed(0)}m — batas ${MAX_DIST}m. Silakan ke area kantor.`;
-      document.getElementById('radiusMax').textContent=`${MAX_DIST}m (batas)`;
-      document.getElementById('radiusBar').style.width='100%';
     } else {
       radiusOKFlag=true;
       document.getElementById('radiusWarning').style.display='none';
@@ -330,14 +507,17 @@ function getGPS(){
     gpsReady=true;radiusOKFlag=true;checkReady();
   },{enableHighAccuracy:true,timeout:12000});
 }
+
 function checkReady(){
   const btn=document.getElementById('btnSubmit');
+  const shiftOK = selectedShiftId !== null || document.querySelector('input[name=shift_id]') === null;
   if(photoBlob&&gpsReady){
-    if(radiusOKFlag){btn.disabled=false;btn.style.opacity='1';btn.textContent='Kirim Absen ✓'}
-    else{btn.disabled=true;btn.style.opacity='.45';btn.textContent='🚫 Di Luar Radius'}
+    if(radiusOKFlag&&shiftOK){btn.disabled=false;btn.style.opacity='1';btn.textContent='Kirim Absen ✓'}
+    else if(!radiusOKFlag){btn.disabled=true;btn.style.opacity='.45';btn.textContent='🚫 Di Luar Radius'}
+    else{btn.disabled=true;btn.style.opacity='.45';btn.textContent='Pilih Shift Dulu'}
   }
 }
-// Close modal on backdrop tap
-document.getElementById('absenModal').addEventListener('click',function(e){if(e.target===this)closeModal()});
+
+document.getElementById('absenModal').addEventListener('click',function(e){if(e.target===this)closeModal();});
 </script>
 {% endblock %}
