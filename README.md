@@ -1,4 +1,4 @@
-# 🏢 AbsensiPro - Sistem Manajemen Kehadiran Digital
+# 🏢 SIAP - Sistem Manajemen Kehadiran Digital RS Slamet Riyadi
 
 Aplikasi absensi digital berbasis Flask dengan fitur lengkap: GPS tracking, foto absen, dashboard admin, grafik, dan export laporan.
 
@@ -62,7 +62,7 @@ absensi/
 ├── requirements.txt       # Dependencies
 ├── run.sh                 # Script runner
 ├── instance/
-│   └── absensi.db         # Database SQLite (auto-created)
+│   └── absensi.db         # Database PostgreSql (auto-created)
 ├── static/
 │   └── uploads/photos/    # Foto pegawai & absensi
 └── templates/
@@ -98,3 +98,5 @@ Edit di **Admin → Pengaturan**:
 3. Pegawai **login** dan mulai absen harian
 4. Admin monitor kehadiran via **dashboard**
 5. Export **laporan Excel/PDF** tiap bulan
+
+Copyright @ITRSSlamet RIyadi
