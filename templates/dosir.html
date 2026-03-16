@@ -1,0 +1,192 @@
+{% extends "layout.html" %}
+{% block title %}E-Dosir · SIAP RSSR {% endblock %}
+{% block content %}
+<style>
+.dosir-card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);margin-bottom:14px;overflow:hidden;border:1.5px solid #f1f5f9}
+.dosir-card.wajib{border-left:4px solid #3b82f6}
+.dosir-card.opsional{border-left:4px solid #94a3b8}
+.badge-verified{background:#d1fae5;color:#065f46;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.badge-pending{background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.badge-rejected{background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.badge-empty{background:#f1f5f9;color:#64748b;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600}
+.upload-zone{border:2px dashed #cbd5e1;border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:.2s;background:#f8fafc}
+.upload-zone:hover{border-color:#3b82f6;background:#eff6ff}
+.upload-zone.dragging{border-color:#3b82f6;background:#dbeafe}
+input[type=file]{display:none}
+.progress-bar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:10px}
+.progress-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#06b6d4);border-radius:99px;transition:width .3s}
+</style>
+
+<!-- Header -->
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:20px;color:#fff;margin:-16px -16px 0">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+    <div style="width:40px;height:40px;background:rgba(255,255,255,.15);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px">📁</div>
+    <div>
+      <h2 style="font-size:18px;font-weight:800;margin:0">E-Dosir</h2>
+      <p style="font-size:12px;color:#93c5fd;margin:0">Dokumen Kepegawaian Digital</p>
+    </div>
+  </div>
+  <!-- Progress summary -->
+  {% set total = jenis_list|length %}
+  {% set done = uploads.values()|selectattr('status','in',['verified','pending'])|list|length %}
+  {% set verified = uploads.values()|selectattr('status','equalto','verified')|list|length %}
+  <div style="background:rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-size:12px;color:#bfdbfe">Kelengkapan Dokumen</span>
+      <span style="font-size:13px;font-weight:700">{{ verified }}/{{ total }} Terverifikasi</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" style="width:{{ (verified/total*100)|int if total > 0 else 0 }}%"></div>
+    </div>
+    <div style="display:flex;gap:14px;margin-top:8px">
+      <span style="font-size:11px;color:#6ee7b7">✓ {{ verified }} Terverifikasi</span>
+      <span style="font-size:11px;color:#fde68a">⏳ {{ done - verified }} Pending</span>
+      <span style="font-size:11px;color:#fca5a5">✗ {{ uploads.values()|selectattr('status','equalto','rejected')|list|length }} Ditolak</span>
+      <span style="font-size:11px;color:#cbd5e1">– {{ total - done }} Belum Upload</span>
+    </div>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div style="margin:12px 0;padding:12px 14px;border-radius:12px;font-size:13px;
+    background:{{'#d1fae5' if cat=='success' else '#fee2e2' if cat=='error' else '#fef3c7'}};
+    color:{{'#065f46' if cat=='success' else '#991b1b' if cat=='error' else '#92400e'}}">
+    {{ msg }}
+  </div>
+  {% endfor %}
+{% endwith %}
+
+<div style="margin-top:14px">
+  {% if not jenis_list %}
+  <div style="text-align:center;padding:40px;color:#94a3b8">
+    <p style="font-size:36px">📂</p>
+    <p style="font-size:14px;font-weight:600;margin-top:8px">Belum ada dokumen yang perlu diupload</p>
+    <p style="font-size:12px;margin-top:4px">Hubungi admin untuk informasi lebih lanjut</p>
+  </div>
+  {% endif %}
+
+  {% for j in jenis_list %}
+  {% set upload = uploads.get(j.id) %}
+  <div class="dosir-card {{ 'wajib' if j.wajib else 'opsional' }}">
+    <!-- Card header -->
+    <div style="padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:14px;font-weight:700;color:#1e293b">{{ j.nama }}</span>
+          {% if j.wajib %}<span style="background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px">WAJIB</span>
+          {% else %}<span style="background:#f1f5f9;color:#64748b;font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px">Opsional</span>{% endif %}
+          {% if j.dept_nama %}<span style="background:#ede9fe;color:#5b21b6;font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px">{{ j.dept_nama }}</span>{% endif %}
+        </div>
+        {% if j.deskripsi %}<p style="font-size:12px;color:#64748b;margin-top:4px">{{ j.deskripsi }}</p>{% endif %}
+      </div>
+      <!-- Status badge -->
+      {% if upload %}
+        {% if upload.status == 'verified' %}<span class="badge-verified">✓ Terverifikasi</span>
+        {% elif upload.status == 'pending' %}<span class="badge-pending">⏳ Menunggu</span>
+        {% elif upload.status == 'rejected' %}<span class="badge-rejected">✗ Ditolak</span>{% endif %}
+      {% else %}<span class="badge-empty">Belum Upload</span>{% endif %}
+    </div>
+
+    {% if upload %}
+    <!-- File info -->
+    <div style="margin:0 16px 12px;background:#f8fafc;border-radius:10px;padding:10px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:20px">{{ '📄' if upload.filename.endswith('.pdf') else '🖼️' }}</span>
+          <div>
+            <p style="font-size:12px;font-weight:600;color:#1e293b">{{ upload.original_name or upload.filename }}</p>
+            <p style="font-size:11px;color:#94a3b8">{{ upload.uploaded_at.strftime('%d %b %Y %H:%M') if upload.uploaded_at else '-' }}</p>
+          </div>
+        </div>
+        <a href="/dosir/file/{{ upload.id }}" target="_blank"
+          style="background:#e0f2fe;color:#0369a1;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;text-decoration:none;white-space:nowrap">
+          👁 Lihat File
+        </a>
+      </div>
+      {% if upload.catatan_admin %}
+      <div style="margin-top:8px;padding:8px 10px;background:{{ '#d1fae5' if upload.status=='verified' else '#fee2e2' }};border-radius:8px">
+        <p style="font-size:11px;font-weight:600;color:{{ '#065f46' if upload.status=='verified' else '#991b1b' }}">
+          💬 Catatan Admin: {{ upload.catatan_admin }}
+        </p>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Upload form -->
+    {% if not upload or upload.status == 'rejected' %}
+    <div style="padding:0 16px 16px">
+      <form method="POST" action="/dosir/upload/{{ j.id }}" enctype="multipart/form-data" id="form-{{ j.id }}">
+        <div class="upload-zone" onclick="document.getElementById('file-{{ j.id }}').click()"
+          ondrop="handleDrop(event,'{{ j.id }}')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+          <input type="file" id="file-{{ j.id }}" name="file" accept=".pdf,.jpg,.jpeg,.png"
+            onchange="previewFile(this,'{{ j.id }}')">
+          <div id="zone-text-{{ j.id }}">
+            <p style="font-size:24px;margin-bottom:4px">📎</p>
+            <p style="font-size:13px;font-weight:600;color:#475569">Klik atau drag file ke sini</p>
+            <p style="font-size:11px;color:#94a3b8;margin-top:2px">PDF, JPG, PNG — Maks 5 MB</p>
+          </div>
+          <div id="preview-{{ j.id }}" style="display:none">
+            <p style="font-size:13px;font-weight:600;color:#1d4ed8" id="fname-{{ j.id }}"></p>
+            <p style="font-size:11px;color:#64748b">Siap diupload</p>
+          </div>
+        </div>
+        <input type="text" name="keterangan" placeholder="Keterangan (opsional)"
+          style="width:100%;margin-top:8px;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box">
+        <button type="submit" id="btn-{{ j.id }}" disabled
+          style="width:100%;margin-top:8px;background:#3b82f6;color:#fff;font-weight:700;padding:11px;border-radius:10px;border:none;cursor:pointer;font-size:13px;opacity:.45;transition:.2s"
+          onclick="return validateForm('{{ j.id }}')">
+          ⬆️ Upload Dokumen
+        </button>
+      </form>
+    </div>
+    {% elif upload.status == 'verified' %}
+    <div style="padding:0 16px 14px">
+      <details>
+        <summary style="font-size:12px;color:#3b82f6;cursor:pointer;font-weight:600">🔄 Upload Ulang</summary>
+        <div style="margin-top:10px">
+          <form method="POST" action="/dosir/upload/{{ j.id }}" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required
+              style="width:100%;padding:9px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;box-sizing:border-box">
+            <input type="text" name="keterangan" placeholder="Keterangan"
+              style="width:100%;margin-top:6px;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;box-sizing:border-box">
+            <button type="submit" style="width:100%;margin-top:6px;background:#64748b;color:#fff;font-weight:600;padding:10px;border-radius:10px;border:none;cursor:pointer;font-size:12px">
+              Upload Ulang
+            </button>
+          </form>
+        </div>
+      </details>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+function previewFile(input, jid) {
+  const f = input.files[0];
+  if (!f) return;
+  document.getElementById('zone-text-' + jid).style.display = 'none';
+  document.getElementById('preview-' + jid).style.display = 'block';
+  document.getElementById('fname-' + jid).textContent = f.name;
+  const btn = document.getElementById('btn-' + jid);
+  btn.disabled = false; btn.style.opacity = '1';
+}
+function validateForm(jid) {
+  const input = document.getElementById('file-' + jid);
+  if (!input.files[0]) { alert('Pilih file terlebih dahulu'); return false; }
+  return true;
+}
+function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('dragging'); }
+function handleDragLeave(e) { e.currentTarget.classList.remove('dragging'); }
+function handleDrop(e, jid) {
+  e.preventDefault(); e.currentTarget.classList.remove('dragging');
+  const dt = e.dataTransfer; if (!dt.files.length) return;
+  const input = document.getElementById('file-' + jid);
+  const transfer = new DataTransfer(); transfer.items.add(dt.files[0]);
+  input.files = transfer.files;
+  previewFile(input, jid);
+}
+</script>
+{% endblock %}

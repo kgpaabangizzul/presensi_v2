@@ -11,7 +11,7 @@
         <div style="width:36px;height:36px;background:#f59e0b;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <svg style="width:18px;height:18px;color:#fff" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
         </div>
-        <div><p style="color:#fff;font-weight:700;font-size:13px;line-height:1.2">Admin Panel</p><p style="color:#64748b;font-size:10px">Sistem Informasi Absensi Pegawai</p></div>
+        <div><p style="color:#fff;font-weight:700;font-size:13px;line-height:1.2">Admin Panel</p><p style="color:#64748b;font-size:10px">AbsensiPro</p></div>
       </div>
       <button onclick="closeAdminSidebar()" class="lg:hidden" style="color:#64748b;background:none;border:none;cursor:pointer;padding:4px">
         <svg style="width:18px;height:18px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -34,8 +34,11 @@
       <a href="/admin/absensi" class="sidebar-link {% if '/admin/absensi' in request.path %}active{% endif %}">
         <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>Data Absensi
       </a>
-      <a href="/admin/izin" class="sidebar-link {% if '/admin/izin' in request.path %}active{% endif %}">
+      <a href="/admin/izin" class="sidebar-link {% if '/admin/izin' in request.path and '/dosir' not in request.path %}active{% endif %}">
         <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Kelola Izin
+      </a>
+      <a href="/admin/dosir" class="sidebar-link {% if '/admin/dosir' in request.path %}active{% endif %}">
+        <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>E-Dosir
       </a>
       <p style="color:#475569;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:10px 10px 4px">Master Data</p>
       <a href="/admin/departemen" class="sidebar-link {% if '/admin/departemen' in request.path %}active{% endif %}">

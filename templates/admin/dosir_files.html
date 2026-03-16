@@ -1,0 +1,223 @@
+{% extends "admin/layout.html" %}
+{% block title %}Verifikasi Dosir · SIAP RSSR {% endblock %}
+{% block content %}
+<style>
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:0;margin-bottom:12px;overflow:hidden;border:1px solid #f1f5f9}
+.badge-verified{background:#d1fae5;color:#065f46;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.badge-pending{background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.badge-rejected{background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.btn-verify{background:#10b981;color:#fff;font-weight:700;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px}
+.btn-reject{background:#ef4444;color:#fff;font-weight:600;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px}
+.input-field{width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:12px;color:#1e293b;box-sizing:border-box}
+</style>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0">📋 Verifikasi Dokumen Pegawai</h2>
+    <p style="font-size:12px;color:#64748b;margin-top:2px">Review dan verifikasi file yang diupload pegawai</p>
+  </div>
+  <a href="/admin/dosir" style="background:#6366f1;color:#fff;font-weight:700;padding:10px 16px;border-radius:10px;text-decoration:none;font-size:13px">⚙️ Kelola Jenis Dokumen</a>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div style="padding:12px 14px;border-radius:12px;margin-bottom:12px;font-size:13px;
+    background:{{'#d1fae5' if cat=='success' else '#fee2e2' if cat=='error' else '#fef3c7'}};
+    color:{{'#065f46' if cat=='success' else '#991b1b' if cat=='error' else '#92400e'}}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Filter -->
+<div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+  <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;width:100%">
+    <div style="flex:1;min-width:140px">
+      <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px">Departemen</label>
+      <select name="dept_id" class="input-field" style="padding:9px 12px">
+        <option value="">Semua Departemen</option>
+        {% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if dept_id==d.id|string }}>{{ d.nama }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:120px">
+      <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px">Status</label>
+      <select name="status" class="input-field" style="padding:9px 12px">
+        <option value="">Semua Status</option>
+        <option value="pending" {{ 'selected' if status_filter=='pending' }}>⏳ Pending</option>
+        <option value="verified" {{ 'selected' if status_filter=='verified' }}>✓ Terverifikasi</option>
+        <option value="rejected" {{ 'selected' if status_filter=='rejected' }}>✗ Ditolak</option>
+      </select>
+    </div>
+    <button type="submit" style="background:#3b82f6;color:#fff;font-weight:700;padding:9px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px">Filter</button>
+    <a href="/admin/dosir/files" style="background:#f1f5f9;color:#374151;font-weight:600;padding:9px 14px;border-radius:10px;text-decoration:none;font-size:13px">Reset</a>
+  </form>
+</div>
+
+<!-- Stats bar -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+  <div style="background:#fef3c7;border-radius:12px;padding:12px;text-align:center">
+    <p style="font-size:22px;font-weight:800;color:#92400e">{{ files|selectattr('status','equalto','pending')|list|length }}</p>
+    <p style="font-size:11px;color:#b45309">Menunggu Review</p>
+  </div>
+  <div style="background:#d1fae5;border-radius:12px;padding:12px;text-align:center">
+    <p style="font-size:22px;font-weight:800;color:#065f46">{{ files|selectattr('status','equalto','verified')|list|length }}</p>
+    <p style="font-size:11px;color:#047857">Terverifikasi</p>
+  </div>
+  <div style="background:#fee2e2;border-radius:12px;padding:12px;text-align:center">
+    <p style="font-size:22px;font-weight:800;color:#991b1b">{{ files|selectattr('status','equalto','rejected')|list|length }}</p>
+    <p style="font-size:11px;color:#b91c1c">Ditolak</p>
+  </div>
+</div>
+
+{% if not files %}
+<div style="text-align:center;padding:48px;color:#94a3b8;background:#fff;border-radius:16px">
+  <p style="font-size:36px">📂</p>
+  <p style="font-size:14px;font-weight:600;margin-top:8px">Tidak ada file ditemukan</p>
+</div>
+{% endif %}
+
+<!-- Mobile cards -->
+<div class="sm:hidden">
+{% for f in files %}
+<div class="card">
+  <div style="padding:14px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
+      <div>
+        <p style="font-weight:700;color:#1e293b;font-size:14px">{{ f.user_nama }}</p>
+        <p style="font-size:11px;color:#64748b">{{ f.nik }} · {{ f.dept_nama or '-' }}</p>
+        <p style="font-size:12px;font-weight:600;color:#3b82f6;margin-top:4px">{{ f.jenis_nama }}</p>
+      </div>
+      {% if f.status=='verified' %}<span class="badge-verified">✓ Verified</span>
+      {% elif f.status=='pending' %}<span class="badge-pending">⏳ Pending</span>
+      {% else %}<span class="badge-rejected">✗ Ditolak</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border-radius:10px;padding:10px;margin-bottom:10px">
+      <span style="font-size:20px">{{ '📄' if f.filename.endswith('.pdf') else '🖼️' }}</span>
+      <div style="flex:1">
+        <p style="font-size:12px;font-weight:600;color:#1e293b">{{ f.original_name or f.filename }}</p>
+        <p style="font-size:10px;color:#94a3b8">{{ f.uploaded_at.strftime('%d %b %Y %H:%M') if f.uploaded_at else '-' }}</p>
+      </div>
+      <a href="/admin/dosir/file/{{ f.id }}" target="_blank"
+        style="background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;text-decoration:none">
+        👁 Lihat
+      </a>
+    </div>
+    {% if f.catatan_admin %}
+    <p style="font-size:11px;color:#64748b;margin-bottom:8px">💬 {{ f.catatan_admin }}</p>
+    {% endif %}
+    {% if f.status == 'pending' %}
+    <form method="POST" action="/admin/dosir/verify/{{ f.id }}/verify?{{ request.query_string.decode() }}"
+      id="vform-m-{{ f.id }}" style="display:flex;flex-direction:column;gap:6px">
+      <input type="text" name="catatan" class="input-field" placeholder="Catatan (opsional)">
+      <div style="display:flex;gap:8px">
+        <button type="submit" class="btn-verify" style="flex:1">✓ Verifikasi</button>
+        <button type="button" onclick="switchToReject('m',{{ f.id }})" class="btn-reject" style="flex:1">✗ Tolak</button>
+      </div>
+    </form>
+    <form method="POST" action="/admin/dosir/verify/{{ f.id }}/reject?{{ request.query_string.decode() }}"
+      id="reject-form-m-{{ f.id }}" style="display:none;flex-direction:column;gap:6px">
+      <input type="text" name="catatan" id="reject-input-m-{{ f.id }}" class="input-field" placeholder="Alasan penolakan (wajib diisi)">
+      <div style="display:flex;gap:8px">
+        <button type="button" onclick="submitReject('m',{{ f.id }})" class="btn-reject" style="flex:1">✗ Konfirmasi Tolak</button>
+        <button type="button" onclick="cancelReject('m',{{ f.id }})" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:12px">Batal</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<!-- Desktop table -->
+<div class="hidden sm:block" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.07)">
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="background:#f8fafc">
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Pegawai</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Jenis Dokumen</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">File</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Status</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:12px 14px">
+          <p style="font-weight:700;color:#1e293b">{{ f.user_nama }}</p>
+          <p style="font-size:11px;color:#64748b;margin-top:2px">{{ f.nik }} · {{ f.dept_nama or '-' }}</p>
+        </td>
+        <td style="padding:12px 14px">
+          <p style="font-weight:600;color:#3b82f6">{{ f.jenis_nama }}</p>
+          {% if f.wajib %}<span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:99px">WAJIB</span>{% endif %}
+        </td>
+        <td style="padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span>{{ '📄' if f.filename.endswith('.pdf') else '🖼️' }}</span>
+            <div>
+              <p style="font-size:12px;font-weight:600;color:#1e293b">{{ f.original_name or f.filename }}</p>
+              <p style="font-size:10px;color:#94a3b8">{{ f.uploaded_at.strftime('%d %b %Y %H:%M') if f.uploaded_at else '-' }}</p>
+            </div>
+          </div>
+          <a href="/admin/dosir/file/{{ f.id }}" target="_blank"
+            style="display:inline-block;margin-top:4px;background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:600;padding:3px 10px;border-radius:6px;text-decoration:none">
+            👁 Lihat File
+          </a>
+        </td>
+        <td style="padding:12px 14px">
+          {% if f.status=='verified' %}<span class="badge-verified">✓ Terverifikasi</span>
+          {% elif f.status=='pending' %}<span class="badge-pending">⏳ Menunggu</span>
+          {% else %}<span class="badge-rejected">✗ Ditolak</span>{% endif %}
+          {% if f.catatan_admin %}<p style="font-size:10px;color:#64748b;margin-top:4px">{{ f.catatan_admin }}</p>{% endif %}
+        </td>
+        <td style="padding:12px 14px;min-width:200px">
+          {% if f.status == 'pending' %}
+          <form method="POST" action="/admin/dosir/verify/{{ f.id }}/verify?{{ request.query_string.decode() }}" style="display:flex;flex-direction:column;gap:5px" id="vform-d-{{ f.id }}">
+            <input type="text" name="catatan" class="input-field" placeholder="Catatan opsional">
+            <div style="display:flex;gap:6px">
+              <button type="submit" class="btn-verify" style="flex:1;padding:7px">✓ Verifikasi</button>
+              <button type="button" onclick="switchToReject('d',{{ f.id }})" class="btn-reject" style="flex:1;padding:7px">✗ Tolak</button>
+            </div>
+          </form>
+          <form method="POST" action="/admin/dosir/verify/{{ f.id }}/reject?{{ request.query_string.decode() }}"
+            id="reject-form-d-{{ f.id }}" style="display:none;flex-direction:column;gap:5px">
+            <input type="text" name="catatan" id="reject-input-d-{{ f.id }}" class="input-field" placeholder="Alasan penolakan (wajib diisi)">
+            <div style="display:flex;gap:6px">
+              <button type="button" onclick="submitReject('d',{{ f.id }})" class="btn-reject" style="flex:1;padding:7px">✗ Konfirmasi</button>
+              <button type="button" onclick="cancelReject('d',{{ f.id }})" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:7px;border-radius:8px;border:none;cursor:pointer;font-size:12px">Batal</button>
+            </div>
+          </form>
+          {% else %}
+          <span style="font-size:12px;color:#94a3b8">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function switchToReject(pfx, fid) {
+  const vf = document.getElementById('vform-' + pfx + '-' + fid);
+  if (vf) vf.style.display = 'none';
+  const rf = document.getElementById('reject-form-' + pfx + '-' + fid);
+  rf.style.display = 'flex';
+  document.getElementById('reject-input-' + pfx + '-' + fid).focus();
+}
+function cancelReject(pfx, fid) {
+  document.getElementById('reject-form-' + pfx + '-' + fid).style.display = 'none';
+  const vf = document.getElementById('vform-' + pfx + '-' + fid);
+  if (vf) vf.style.display = 'flex';
+}
+function submitReject(pfx, fid) {
+  const input = document.getElementById('reject-input-' + pfx + '-' + fid);
+  if (!input.value.trim()) {
+    input.style.borderColor = '#ef4444';
+    input.placeholder = 'Alasan wajib diisi!';
+    input.focus();
+    return;
+  }
+  input.style.borderColor = '';
+  document.getElementById('reject-form-' + pfx + '-' + fid).submit();
+}
+</script>
+{% endblock %}

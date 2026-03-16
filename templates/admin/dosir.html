@@ -1,0 +1,261 @@
+{% extends "admin/layout.html" %}
+{% block title %}Dosir - SIAP RSSR {% endblock %}
+{% block content %}
+<style>
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px;margin-bottom:16px}
+.badge-w{background:#dbeafe;color:#1d4ed8;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.badge-o{background:#f1f5f9;color:#64748b;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:600}
+.input-field{width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff}
+.input-field:focus{outline:none;border-color:#3b82f6}
+.btn-primary{background:#3b82f6;color:#fff;font-weight:700;padding:10px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px}
+.btn-danger{background:#ef4444;color:#fff;font-weight:600;padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px}
+.btn-edit{background:#f59e0b;color:#fff;font-weight:600;padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f8fafc;padding:10px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0}
+td{padding:10px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tr:hover td{background:#fafafa}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;align-items:center;justify-content:center}
+.modal-box{background:#fff;border-radius:20px;padding:24px;width:90%;max-width:460px;max-height:90vh;overflow-y:auto}
+</style>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+  <div>
+    <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0">📁 Kelola E-Dosir</h2>
+    <p style="font-size:12px;color:#64748b;margin-top:2px">Atur jenis dokumen yang perlu diupload pegawai</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/admin/dosir/files" style="background:#6366f1;color:#fff;font-weight:700;padding:10px 16px;border-radius:10px;text-decoration:none;font-size:13px">📋 Lihat Semua File</a>
+    <button onclick="openAdd()" class="btn-primary">+ Tambah Jenis Dokumen</button>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div style="padding:12px 14px;border-radius:12px;margin-bottom:12px;font-size:13px;
+    background:{{'#d1fae5' if cat=='success' else '#fee2e2' if cat=='error' else '#fef3c7'}};
+    color:{{'#065f46' if cat=='success' else '#991b1b' if cat=='error' else '#92400e'}}">
+    {{ msg }}
+  </div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Stats -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+  <div class="card" style="padding:14px;text-align:center">
+    <p style="font-size:28px;font-weight:800;color:#3b82f6">{{ jenis_list|length }}</p>
+    <p style="font-size:11px;color:#64748b">Total Jenis Dokumen</p>
+  </div>
+  <div class="card" style="padding:14px;text-align:center">
+    <p style="font-size:28px;font-weight:800;color:#1d4ed8">{{ jenis_list|selectattr('wajib','equalto',1)|list|length }}</p>
+    <p style="font-size:11px;color:#64748b">Wajib</p>
+  </div>
+  <div class="card" style="padding:14px;text-align:center">
+    <p style="font-size:28px;font-weight:800;color:#64748b">{{ jenis_list|selectattr('wajib','equalto',0)|list|length }}</p>
+    <p style="font-size:11px;color:#64748b">Opsional</p>
+  </div>
+  <div class="card" style="padding:14px;text-align:center">
+    <p style="font-size:28px;font-weight:800;color:#10b981">{{ stats.values()|sum(attribute='verified') }}</p>
+    <p style="font-size:11px;color:#64748b">File Terverifikasi</p>
+  </div>
+</div>
+
+<!-- Tabel jenis dokumen -->
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+    <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0">Daftar Jenis Dokumen</h3>
+  </div>
+
+  {% if not jenis_list %}
+  <div style="padding:40px;text-align:center;color:#94a3b8">
+    <p style="font-size:32px">📂</p>
+    <p style="font-size:14px;font-weight:600;margin-top:8px">Belum ada jenis dokumen</p>
+    <p style="font-size:12px;margin-top:4px">Klik "+ Tambah Jenis Dokumen" untuk mulai</p>
+  </div>
+  {% else %}
+
+  <!-- Mobile cards -->
+  <div class="sm:hidden">
+    {% for j in jenis_list %}
+    {% set s = stats.get(j.id, {}) %}
+    <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-weight:700;color:#1e293b;font-size:14px">{{ j.nama }}</span>
+            {% if j.wajib %}<span class="badge-w">WAJIB</span>{% else %}<span class="badge-o">Opsional</span>{% endif %}
+          </div>
+          <p style="font-size:11px;color:#64748b">Dept: {{ j.dept_nama or 'Semua Departemen' }}</p>
+          {% if j.deskripsi %}<p style="font-size:11px;color:#94a3b8;margin-top:2px">{{ j.deskripsi }}</p>{% endif %}
+          <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap">
+            <span style="font-size:11px;color:#10b981">✓ {{ s.get('verified',0) }} Verified</span>
+            <span style="font-size:11px;color:#f59e0b">⏳ {{ s.get('pending',0) }} Pending</span>
+            <span style="font-size:11px;color:#ef4444">✗ {{ s.get('rejected',0) }} Ditolak</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button onclick="openEdit({{ j.id }},'{{ j.nama|e }}','{{ j.deskripsi|e }}',{{ j.wajib }},{{ j.departemen_id or 'null' }},{{ j.urutan }})"
+            class="btn-edit">✏️</button>
+          <form method="POST" action="/admin/dosir/jenis/hapus/{{ j.id }}" onsubmit="return confirm('Hapus jenis dokumen ini?')">
+            <button type="submit" class="btn-danger">🗑</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Desktop table -->
+  <div class="hidden sm:block" style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>Nama Dokumen</th>
+          <th>Departemen</th>
+          <th>Tipe</th>
+          <th>Urutan</th>
+          <th>Upload</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j in jenis_list %}
+        {% set s = stats.get(j.id, {}) %}
+        <tr>
+          <td>
+            <p style="font-weight:700;color:#1e293b">{{ j.nama }}</p>
+            {% if j.deskripsi %}<p style="font-size:11px;color:#94a3b8;margin-top:2px">{{ j.deskripsi }}</p>{% endif %}
+          </td>
+          <td style="color:#64748b;font-size:12px">{{ j.dept_nama or '— Semua —' }}</td>
+          <td>{% if j.wajib %}<span class="badge-w">WAJIB</span>{% else %}<span class="badge-o">Opsional</span>{% endif %}</td>
+          <td style="color:#94a3b8;text-align:center">{{ j.urutan }}</td>
+          <td>
+            <div style="font-size:11px;display:flex;gap:8px;flex-wrap:wrap">
+              <span style="color:#10b981">✓ {{ s.get('verified',0) }}</span>
+              <span style="color:#f59e0b">⏳ {{ s.get('pending',0) }}</span>
+              <span style="color:#ef4444">✗ {{ s.get('rejected',0) }}</span>
+            </div>
+          </td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button onclick="openEdit({{ j.id }},'{{ j.nama|e }}','{{ j.deskripsi|e }}',{{ j.wajib }},{{ j.departemen_id or 'null' }},{{ j.urutan }})"
+                class="btn-edit">✏️ Edit</button>
+              <form method="POST" action="/admin/dosir/jenis/hapus/{{ j.id }}" onsubmit="return confirm('Hapus jenis dokumen ini?')">
+                <button type="submit" class="btn-danger">🗑 Hapus</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Modal Tambah -->
+<div id="modalAdd" class="modal-overlay" onclick="closeAdd()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">+ Tambah Jenis Dokumen</h3>
+      <button onclick="closeAdd()" style="background:#f1f5f9;border:none;border-radius:99px;width:30px;height:30px;cursor:pointer;font-size:14px">✕</button>
+    </div>
+    <form method="POST" action="/admin/dosir/jenis/tambah" style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Nama Dokumen *</label>
+        <input type="text" name="nama" class="input-field" required placeholder="contoh: KTP, Ijazah, NPWP...">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Deskripsi</label>
+        <input type="text" name="deskripsi" class="input-field" placeholder="Keterangan singkat tentang dokumen ini">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Berlaku untuk Departemen</label>
+        <select name="departemen_id" class="input-field">
+          <option value="">— Semua Departemen —</option>
+          {% for d in depts %}
+          <option value="{{ d.id }}">{{ d.nama }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Urutan Tampil</label>
+          <input type="number" name="urutan" class="input-field" value="0" min="0">
+        </div>
+        <div style="display:flex;align-items:flex-end;padding-bottom:2px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:#1e293b">
+            <input type="checkbox" name="wajib" checked style="width:16px;height:16px;accent-color:#3b82f6">
+            Dokumen Wajib
+          </label>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button type="button" onclick="closeAdd()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer">Batal</button>
+        <button type="submit" class="btn-primary" style="flex:2;padding:11px">✓ Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Edit -->
+<div id="modalEdit" class="modal-overlay" onclick="closeEdit()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">✏️ Edit Jenis Dokumen</h3>
+      <button onclick="closeEdit()" style="background:#f1f5f9;border:none;border-radius:99px;width:30px;height:30px;cursor:pointer;font-size:14px">✕</button>
+    </div>
+    <form id="editForm" method="POST" style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Nama Dokumen *</label>
+        <input type="text" name="nama" id="editNama" class="input-field" required>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Deskripsi</label>
+        <input type="text" name="deskripsi" id="editDesc" class="input-field">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Berlaku untuk Departemen</label>
+        <select name="departemen_id" id="editDept" class="input-field">
+          <option value="">— Semua Departemen —</option>
+          {% for d in depts %}
+          <option value="{{ d.id }}">{{ d.nama }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Urutan</label>
+          <input type="number" name="urutan" id="editUrutan" class="input-field" min="0">
+        </div>
+        <div style="display:flex;align-items:flex-end;padding-bottom:2px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:#1e293b">
+            <input type="checkbox" name="wajib" id="editWajib" style="width:16px;height:16px;accent-color:#3b82f6">
+            Dokumen Wajib
+          </label>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button type="button" onclick="closeEdit()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer">Batal</button>
+        <button type="submit" class="btn-primary" style="flex:2;padding:11px">✓ Simpan Perubahan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openAdd(){ document.getElementById('modalAdd').style.display='flex'; document.body.style.overflow='hidden'; }
+function closeAdd(){ document.getElementById('modalAdd').style.display='none'; document.body.style.overflow=''; }
+function openEdit(id, nama, desc, wajib, deptId, urutan){
+  document.getElementById('editForm').action = '/admin/dosir/jenis/edit/' + id;
+  document.getElementById('editNama').value = nama;
+  document.getElementById('editDesc').value = desc;
+  document.getElementById('editWajib').checked = wajib == 1;
+  document.getElementById('editUrutan').value = urutan;
+  const sel = document.getElementById('editDept');
+  sel.value = deptId || '';
+  document.getElementById('modalEdit').style.display='flex';
+  document.body.style.overflow='hidden';
+}
+function closeEdit(){ document.getElementById('modalEdit').style.display='none'; document.body.style.overflow=''; }
+</script>
+{% endblock %}

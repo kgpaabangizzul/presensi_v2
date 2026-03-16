@@ -17,9 +17,11 @@ from reportlab.lib.units import cm
 app = Flask(__name__)
 app.secret_key = 'absensi-secret-key-2024'
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'photos')
+app.config['DOSIR_FOLDER']  = os.path.join('static', 'uploads', 'dosir')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-ALLOWED_LAMPIRAN   = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}   # <-- FIX: tambah pdf
+ALLOWED_LAMPIRAN   = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+ALLOWED_DOSIR      = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 
 # ── PostgreSQL config ─────────────────────────────────────────────────────────
 DB_HOST = os.environ.get('DB_HOST', 'localhost')
@@ -154,6 +156,35 @@ def init_db():
     """)
 
     cur.execute("INSERT INTO settings (id, nama_perusahaan) VALUES (1, 'PT. Absensi Digital') ON CONFLICT DO NOTHING")
+
+    # ── E-DOSIR ──────────────────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS dosir_jenis (
+            id SERIAL PRIMARY KEY,
+            nama TEXT NOT NULL,
+            deskripsi TEXT,
+            wajib INTEGER DEFAULT 1,
+            departemen_id INTEGER REFERENCES departemen(id) ON DELETE CASCADE,
+            urutan INTEGER DEFAULT 0,
+            aktif INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS dosir_file (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            jenis_id INTEGER NOT NULL REFERENCES dosir_jenis(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            original_name TEXT,
+            keterangan TEXT,
+            status TEXT DEFAULT 'pending',
+            catatan_admin TEXT,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            verified_at TIMESTAMP,
+            UNIQUE(user_id, jenis_id)
+        )
+    """)
 
     admin_pass = generate_password_hash('admin123')
     cur.execute("""INSERT INTO users (nik,nama,email,password,jabatan,departemen,role,status)
@@ -1163,6 +1194,226 @@ def api_shift_by_dept(dept_id):
     cur.close(); conn.close()
     return jsonify([dict(s) for s in shifts])
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── E-DOSIR USER ──────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/dosir')
+@login_required
+def dosir():
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM users WHERE id=%s", (uid,))
+    user = cur.fetchone()
+    dept_id = user['departemen_id'] if user else None
+
+    # Jenis dokumen yang perlu diupload (global + dept)
+    if dept_id:
+        cur.execute("""SELECT * FROM dosir_jenis
+            WHERE aktif=1 AND (departemen_id IS NULL OR departemen_id=%s)
+            ORDER BY urutan, nama""", (dept_id,))
+    else:
+        cur.execute("SELECT * FROM dosir_jenis WHERE aktif=1 AND departemen_id IS NULL ORDER BY urutan, nama")
+    jenis_list = cur.fetchall()
+
+    # File yang sudah diupload user
+    cur.execute("SELECT * FROM dosir_file WHERE user_id=%s", (uid,))
+    uploads = {r['jenis_id']: dict(r) for r in cur.fetchall()}
+
+    cur.close(); conn.close()
+    return render_template('dosir.html', jenis_list=jenis_list, uploads=uploads, user=user)
+
+
+@app.route('/dosir/upload/<int:jid>', methods=['POST'])
+@login_required
+def dosir_upload(jid):
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM dosir_jenis WHERE id=%s AND aktif=1", (jid,))
+    jenis = cur.fetchone()
+    if not jenis:
+        flash('Jenis dokumen tidak ditemukan.', 'error')
+        cur.close(); conn.close()
+        return redirect(url_for('dosir'))
+
+    f = request.files.get('file')
+    keterangan = request.form.get('keterangan', '').strip()
+    if not f or not f.filename:
+        flash('Pilih file terlebih dahulu.', 'error')
+        cur.close(); conn.close()
+        return redirect(url_for('dosir'))
+
+    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+    if ext not in ALLOWED_DOSIR:
+        flash('Format file tidak diizinkan. Gunakan PDF, JPG, atau PNG.', 'error')
+        cur.close(); conn.close()
+        return redirect(url_for('dosir'))
+
+    dosir_folder = app.config['DOSIR_FOLDER']
+    os.makedirs(dosir_folder, exist_ok=True)
+    original = f.filename
+    fn = secure_filename(f"dosir_{uid}_{jid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+    f.save(os.path.join(dosir_folder, fn))
+
+    cur.execute("""INSERT INTO dosir_file (user_id, jenis_id, filename, original_name, keterangan, status)
+        VALUES (%s,%s,%s,%s,%s,'pending')
+        ON CONFLICT (user_id, jenis_id) DO UPDATE
+        SET filename=EXCLUDED.filename, original_name=EXCLUDED.original_name,
+            keterangan=EXCLUDED.keterangan, status='pending',
+            catatan_admin=NULL, uploaded_at=CURRENT_TIMESTAMP, verified_at=NULL""",
+        (uid, jid, fn, original, keterangan))
+    conn.commit()
+    cur.close(); conn.close()
+    flash(f'Dokumen "{jenis["nama"]}" berhasil diupload. Menunggu verifikasi admin.', 'success')
+    return redirect(url_for('dosir'))
+
+
+@app.route('/dosir/file/<int:fid>')
+@login_required
+def dosir_view(fid):
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM dosir_file WHERE id=%s AND user_id=%s", (fid, uid))
+    df = cur.fetchone()
+    cur.close(); conn.close()
+    if not df:
+        flash('File tidak ditemukan.', 'error')
+        return redirect(url_for('dosir'))
+    path = os.path.join(app.config['DOSIR_FOLDER'], df['filename'])
+    return send_file(path, as_attachment=False)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── E-DOSIR ADMIN ─────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/admin/dosir')
+@admin_required
+def admin_dosir():
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM departemen WHERE aktif=1 ORDER BY nama")
+    depts = cur.fetchall()
+    cur.execute("""SELECT dj.*, d.nama as dept_nama
+        FROM dosir_jenis dj LEFT JOIN departemen d ON dj.departemen_id=d.id
+        WHERE dj.aktif=1 ORDER BY dj.urutan, dj.nama""")
+    jenis_list = cur.fetchall()
+    # Statistik upload per jenis
+    cur.execute("""SELECT jenis_id,
+        COUNT(*) as total,
+        SUM(CASE WHEN status='verified' THEN 1 ELSE 0 END) as verified,
+        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) as rejected
+        FROM dosir_file GROUP BY jenis_id""")
+    stats = {r['jenis_id']: dict(r) for r in cur.fetchall()}
+    cur.close(); conn.close()
+    return render_template('admin/dosir.html', depts=depts, jenis_list=jenis_list, stats=stats)
+
+
+@app.route('/admin/dosir/jenis/tambah', methods=['POST'])
+@admin_required
+def admin_dosir_tambah():
+    nama = request.form.get('nama','').strip()
+    deskripsi = request.form.get('deskripsi','').strip()
+    wajib = 1 if request.form.get('wajib') else 0
+    dept_id = request.form.get('departemen_id') or None
+    urutan = request.form.get('urutan', 0)
+    if not nama:
+        flash('Nama dokumen tidak boleh kosong.', 'error')
+        return redirect(url_for('admin_dosir'))
+    conn = get_db(); cur = q(conn)
+    cur.execute("""INSERT INTO dosir_jenis (nama,deskripsi,wajib,departemen_id,urutan)
+        VALUES (%s,%s,%s,%s,%s)""", (nama, deskripsi, wajib, dept_id, urutan))
+    conn.commit(); cur.close(); conn.close()
+    flash(f'Jenis dokumen "{nama}" berhasil ditambahkan.', 'success')
+    return redirect(url_for('admin_dosir'))
+
+
+@app.route('/admin/dosir/jenis/edit/<int:jid>', methods=['POST'])
+@admin_required
+def admin_dosir_edit(jid):
+    nama = request.form.get('nama','').strip()
+    deskripsi = request.form.get('deskripsi','').strip()
+    wajib = 1 if request.form.get('wajib') else 0
+    dept_id = request.form.get('departemen_id') or None
+    urutan = request.form.get('urutan', 0)
+    conn = get_db(); cur = q(conn)
+    cur.execute("""UPDATE dosir_jenis SET nama=%s,deskripsi=%s,wajib=%s,departemen_id=%s,urutan=%s
+        WHERE id=%s""", (nama, deskripsi, wajib, dept_id, urutan, jid))
+    conn.commit(); cur.close(); conn.close()
+    flash('Jenis dokumen berhasil diperbarui.', 'success')
+    return redirect(url_for('admin_dosir'))
+
+
+@app.route('/admin/dosir/jenis/hapus/<int:jid>', methods=['POST'])
+@admin_required
+def admin_dosir_hapus(jid):
+    conn = get_db(); cur = q(conn)
+    cur.execute("UPDATE dosir_jenis SET aktif=0 WHERE id=%s", (jid,))
+    conn.commit(); cur.close(); conn.close()
+    flash('Jenis dokumen berhasil dihapus.', 'success')
+    return redirect(url_for('admin_dosir'))
+
+
+@app.route('/admin/dosir/files')
+@admin_required
+def admin_dosir_files():
+    conn = get_db(); cur = q(conn)
+    dept_id = request.args.get('dept_id')
+    status_filter = request.args.get('status', '')
+    cur.execute("SELECT * FROM departemen WHERE aktif=1 ORDER BY nama")
+    depts = cur.fetchall()
+    query = """SELECT df.*, u.nama as user_nama, u.nik, d.nama as dept_nama,
+        dj.nama as jenis_nama, dj.wajib
+        FROM dosir_file df
+        JOIN users u ON df.user_id=u.id
+        LEFT JOIN departemen d ON u.departemen_id=d.id
+        JOIN dosir_jenis dj ON df.jenis_id=dj.id
+        WHERE 1=1"""
+    params = []
+    if dept_id:
+        query += " AND u.departemen_id=%s"; params.append(dept_id)
+    if status_filter:
+        query += " AND df.status=%s"; params.append(status_filter)
+    query += " ORDER BY df.uploaded_at DESC"
+    cur.execute(query, params)
+    files = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/dosir_files.html', files=files, depts=depts,
+        dept_id=dept_id, status_filter=status_filter)
+
+
+@app.route('/admin/dosir/verify/<int:fid>/<action>', methods=['POST'])
+@admin_required
+def admin_dosir_verify(fid, action):
+    catatan = request.form.get('catatan','').strip()
+    conn = get_db(); cur = q(conn)
+    if action == 'verify':
+        cur.execute("""UPDATE dosir_file SET status='verified', catatan_admin=%s,
+            verified_at=CURRENT_TIMESTAMP WHERE id=%s""", (catatan, fid))
+        flash('Dokumen berhasil diverifikasi.', 'success')
+    elif action == 'reject':
+        cur.execute("""UPDATE dosir_file SET status='rejected', catatan_admin=%s,
+            verified_at=CURRENT_TIMESTAMP WHERE id=%s""", (catatan, fid))
+        flash('Dokumen ditolak.', 'info')
+    conn.commit(); cur.close(); conn.close()
+    return redirect(url_for('admin_dosir_files', **request.args))
+
+
+@app.route('/admin/dosir/file/<int:fid>')
+@admin_required
+def admin_dosir_view(fid):
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM dosir_file WHERE id=%s", (fid,))
+    df = cur.fetchone()
+    cur.close(); conn.close()
+    if not df:
+        flash('File tidak ditemukan.', 'error')
+        return redirect(url_for('admin_dosir_files'))
+    path = os.path.join(app.config['DOSIR_FOLDER'], df['filename'])
+    return send_file(path, as_attachment=False)
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, host='0.0.0.0', port=5030)
+
