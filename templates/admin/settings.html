@@ -1,14 +1,56 @@
 {% extends 'admin/layout.html' %}
-{% block page_title %}Pengaturan Sistem{% endblock %}
+{% block page_title %}Pengaturan Sistem<script>
+function previewLogo(input) {
+  if (!input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('logoImg').src = e.target.result;
+    document.getElementById('logoPreview').style.display = 'block';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+</script>
+{% endblock %}
 {% block content %}
 <div class="max-w-2xl">
   <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
     <h3 class="font-bold text-slate-800 mb-6">Konfigurasi Sistem Absensi</h3>
-    <form method="POST" class="space-y-5">
+    <form method="POST" enctype="multipart/form-data" class="space-y-5">
+
+      <!-- Logo Upload -->
+      <div style="border:1.5px dashed #cbd5e1;border-radius:14px;padding:16px">
+        <p class="text-sm font-semibold text-slate-700 mb-3">🖼️ Logo Aplikasi</p>
+        {% if settings and settings.logo %}
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+          <img src="/static/uploads/logo/{{ settings.logo }}" style="height:60px;max-width:160px;object-fit:contain;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;padding:6px">
+          <div>
+            <p style="font-size:12px;font-weight:600;color:#1e293b">Logo aktif: {{ settings.logo }}</p>
+            <form method="POST" action="/admin/settings/hapus-logo" style="display:inline;margin-top:6px">
+              <button type="submit" onclick="return confirm('Hapus logo?')"
+                style="background:#fee2e2;color:#991b1b;border:none;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+                🗑 Hapus Logo
+              </button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">
+          {{ 'Ganti Logo' if settings and settings.logo else 'Upload Logo' }} (PNG, JPG, SVG — maks 2MB)
+        </label>
+        <input type="file" name="logo" accept=".png,.jpg,.jpeg,.svg,.gif,.webp"
+          style="width:100%;padding:8px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:#fff;box-sizing:border-box"
+          onchange="previewLogo(this)">
+        <div id="logoPreview" style="display:none;margin-top:10px">
+          <p style="font-size:11px;color:#64748b;margin-bottom:4px">Pratinjau:</p>
+          <img id="logoImg" style="height:60px;max-width:160px;object-fit:contain;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;padding:6px">
+        </div>
+      </div>
+
       <div>
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Nama Perusahaan</label>
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Nama Perusahaan / Instansi</label>
         <input type="text" name="nama_perusahaan" value="{{ settings.nama_perusahaan }}" class="input-field" required>
       </div>
+
       <div class="p-4 bg-blue-50 rounded-xl border border-blue-100">
         <p class="text-sm font-semibold text-blue-800 mb-3">📍 Lokasi Kantor (GPS)</p>
         <div class="grid grid-cols-2 gap-3">

@@ -8,10 +8,17 @@
     class="lg:relative lg:translate-x-0 lg:flex-shrink-0 lg:w-60">
     <div style="padding:20px 16px 14px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:36px;height:36px;background:#3b82f6;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg style="width:18px;height:18px;color:#fff" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        {% if g.settings and g.settings.logo %}
+          <img src="/static/uploads/logo/{{ g.settings.logo }}" style="width:36px;height:36px;border-radius:10px;object-fit:contain;background:#fff;padding:2px;flex-shrink:0">
+        {% else %}
+          <div style="width:36px;height:36px;background:#3b82f6;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg style="width:18px;height:18px;color:#fff" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          </div>
+        {% endif %}
+        <div>
+          <p style="color:#fff;font-weight:700;font-size:14px;line-height:1.2">{{ g.settings.nama_perusahaan if g.settings and g.settings.nama_perusahaan else 'SIAP' }}</p>
+          <p style="color:#64748b;font-size:11px">Portal Pegawai</p>
         </div>
-        <div><p style="color:#fff;font-weight:700;font-size:14px;line-height:1.2">AbsensiPro</p><p style="color:#64748b;font-size:11px">Portal Pegawai</p></div>
       </div>
       <button onclick="closeSidebar()" class="lg:hidden" style="color:#64748b;background:none;border:none;cursor:pointer;padding:4px">
         <svg style="width:20px;height:20px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, date, timedelta
@@ -16,6 +16,18 @@ from reportlab.lib.units import cm
 
 app = Flask(__name__)
 app.secret_key = 'absensi-secret-key-2024'
+
+@app.before_request
+def load_global_settings():
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM settings WHERE id=1")
+        row = cur.fetchone()
+        g.settings = dict(row) if row else {}
+        cur.close(); conn.close()
+    except Exception:
+        g.settings = {}
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'photos')
 app.config['DOSIR_FOLDER']  = os.path.join('static', 'uploads', 'dosir')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
@@ -156,6 +168,11 @@ def init_db():
     """)
 
     cur.execute("INSERT INTO settings (id, nama_perusahaan) VALUES (1, 'PT. Absensi Digital') ON CONFLICT DO NOTHING")
+    # Tambah kolom logo jika belum ada
+    try:
+        cur.execute("ALTER TABLE settings ADD COLUMN IF NOT EXISTS logo TEXT")
+    except Exception:
+        pass
 
     # ── E-DOSIR ──────────────────────────────────────────────────────────────
     cur.execute("""
@@ -1172,16 +1189,50 @@ def admin_grafik():
 def admin_settings():
     conn = get_db(); cur = q(conn)
     if request.method == 'POST':
-        cur.execute("""UPDATE settings SET nama_perusahaan=%s,jam_masuk=%s,jam_keluar=%s,
-            office_lat=%s,office_lng=%s,max_distance=%s WHERE id=1""",
-            (request.form['nama_perusahaan'], request.form['jam_masuk'], request.form['jam_keluar'],
-             float(request.form['office_lat']), float(request.form['office_lng']),
-             int(request.form['max_distance'])))
+        # Handle logo upload
+        logo_filename = None
+        logo_file = request.files.get('logo')
+        if logo_file and logo_file.filename:
+            ext = logo_file.filename.rsplit('.', 1)[-1].lower() if '.' in logo_file.filename else ''
+            if ext in {'png', 'jpg', 'jpeg', 'svg', 'gif', 'webp'}:
+                logo_dir = os.path.join('static', 'uploads', 'logo')
+                os.makedirs(logo_dir, exist_ok=True)
+                logo_filename = secure_filename(f"logo.{ext}")
+                logo_file.save(os.path.join(logo_dir, logo_filename))
+
+        if logo_filename:
+            cur.execute("""UPDATE settings SET nama_perusahaan=%s,
+                office_lat=%s,office_lng=%s,max_distance=%s,logo=%s WHERE id=1""",
+                (request.form['nama_perusahaan'],
+                 float(request.form['office_lat']), float(request.form['office_lng']),
+                 int(request.form['max_distance']), logo_filename))
+        else:
+            cur.execute("""UPDATE settings SET nama_perusahaan=%s,
+                office_lat=%s,office_lng=%s,max_distance=%s WHERE id=1""",
+                (request.form['nama_perusahaan'],
+                 float(request.form['office_lat']), float(request.form['office_lng']),
+                 int(request.form['max_distance'])))
         conn.commit(); flash('Settings disimpan!', 'success')
     cur.execute("SELECT * FROM settings WHERE id=1")
     settings = cur.fetchone()
     cur.close(); conn.close()
     return render_template('admin/settings.html', settings=settings)
+
+@app.route('/admin/settings/hapus-logo', methods=['POST'])
+@admin_required
+def hapus_logo():
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT logo FROM settings WHERE id=1")
+    s = cur.fetchone()
+    if s and s['logo']:
+        path = os.path.join('static', 'uploads', 'logo', s['logo'])
+        if os.path.exists(path):
+            os.remove(path)
+        cur.execute("UPDATE settings SET logo=NULL WHERE id=1")
+        conn.commit()
+        flash('Logo berhasil dihapus.', 'success')
+    cur.close(); conn.close()
+    return redirect(url_for('admin_settings'))
 
 # ── API ───────────────────────────────────────────────────────────────────────
 @app.route('/api/shift-by-dept/<int:dept_id>')
@@ -1193,6 +1244,8 @@ def api_shift_by_dept(dept_id):
     shifts = cur.fetchall()
     cur.close(); conn.close()
     return jsonify([dict(s) for s in shifts])
+
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1416,4 +1469,3 @@ def admin_dosir_view(fid):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, host='0.0.0.0', port=5030)
-

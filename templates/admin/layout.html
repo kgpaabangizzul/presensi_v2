@@ -8,10 +8,17 @@
     class="lg:relative lg:translate-x-0 lg:flex-shrink-0">
     <div style="padding:16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:36px;height:36px;background:#f59e0b;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg style="width:18px;height:18px;color:#fff" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        {% if g.settings and g.settings.logo %}
+          <img src="/static/uploads/logo/{{ g.settings.logo }}" style="width:36px;height:36px;border-radius:10px;object-fit:contain;background:#fff;padding:2px;flex-shrink:0">
+        {% else %}
+          <div style="width:36px;height:36px;background:#f59e0b;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg style="width:18px;height:18px;color:#fff" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          </div>
+        {% endif %}
+        <div>
+          <p style="color:#fff;font-weight:700;font-size:13px;line-height:1.2">Admin Panel</p>
+          <p style="color:#64748b;font-size:10px">{{ g.settings.nama_perusahaan if g.settings and g.settings.nama_perusahaan else 'SIAP' }}</p>
         </div>
-        <div><p style="color:#fff;font-weight:700;font-size:13px;line-height:1.2">Admin Panel</p><p style="color:#64748b;font-size:10px">AbsensiPro</p></div>
       </div>
       <button onclick="closeAdminSidebar()" class="lg:hidden" style="color:#64748b;background:none;border:none;cursor:pointer;padding:4px">
         <svg style="width:18px;height:18px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
