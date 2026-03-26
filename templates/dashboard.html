@@ -1,54 +1,61 @@
 {% extends 'layout.html' %}
-{% block page_title %}Dashboard
+{% block page_title %}Dashboard{% endblock %}
+{% block content %}
+
 <!-- Modal Lupa Absen Pulang -->
-<div id="lupaModal" onclick="closeLupaModal()" style="display:none;position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);align-items:flex-end;justify-content:center">
-  <div onclick="event.stopPropagation()" style="background:#fff;width:100%;max-width:440px;border-radius:24px 24px 0 0;display:flex;flex-direction:column;max-height:92dvh">
-    <!-- Handle + Header — FIXED, tidak ikut scroll -->
-    <div style="flex-shrink:0">
-      <div style="display:flex;justify-content:center;padding:12px 0 4px">
+<div id="lupaModal" onclick="if(event.target===this)closeLupaModal()" style="display:none;position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);align-items:flex-end;justify-content:center">
+  <div style="background:#fff;width:100%;max-width:440px;border-radius:24px 24px 0 0;display:flex;flex-direction:column;max-height:88svh;max-height:88vh">
+    <!-- Header FIXED -->
+    <div style="flex-shrink:0;padding:12px 20px 0">
+      <div style="display:flex;justify-content:center;margin-bottom:8px">
         <div style="width:36px;height:4px;background:#e2e8f0;border-radius:99px"></div>
       </div>
-      <div style="padding:0 20px 12px;display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #f1f5f9">
         <div>
           <h3 style="font-size:16px;font-weight:700;color:#1e293b">⚠️ Lupa Absen Pulang</h3>
-          <p style="font-size:12px;color:#64748b;margin-top:2px">Laporan akan dikirim ke admin untuk disetujui</p>
+          <p style="font-size:12px;color:#64748b;margin-top:2px">Laporan dikirim ke admin untuk disetujui</p>
         </div>
         <button onclick="closeLupaModal()" style="width:32px;height:32px;border-radius:99px;background:#f1f5f9;border:none;cursor:pointer;font-size:16px;flex-shrink:0">✕</button>
       </div>
     </div>
-    <!-- Form area — scrollable -->
-    <form method="POST" action="/lupa-absen" style="flex:1;overflow-y:auto;padding:0 20px;display:flex;flex-direction:column;gap:12px">
+    <!-- Scrollable content -->
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px">
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Tanggal</label>
-        <input type="date" name="tanggal" id="lupaTanggal" class="input-field" required>
+        <input type="date" id="lupaTanggal2" class="input-field" style="width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:14px;background:#fff">
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Perkiraan Jam Pulang</label>
-        <input type="time" name="jam_keluar_manual" class="input-field">
-        <p style="font-size:11px;color:#94a3b8;margin-top:4px">Isi perkiraan jam Anda pulang (opsional)</p>
+        <input type="time" id="lupaJam2" class="input-field" style="width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:14px;background:#fff">
+        <p style="font-size:11px;color:#94a3b8;margin-top:4px">Opsional</p>
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Alasan</label>
-        <textarea name="alasan" rows="2" class="input-field" placeholder="Contoh: Terburu-buru, lupa tap keluar..." style="resize:none;font-size:14px">Lupa absen pulang</textarea>
+        <textarea id="lupaAlasan2" rows="3" style="width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:14px;resize:none;background:#fff;box-sizing:border-box">Lupa absen pulang</textarea>
       </div>
       <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:10px 12px;display:flex;gap:8px">
         <span style="flex-shrink:0">ℹ️</span>
         <p style="font-size:11px;color:#92400e;line-height:1.5">Admin akan memverifikasi dan mengisi jam pulang Anda. Mohon pastikan data yang diisi benar.</p>
       </div>
-      <!-- Tombol selalu di bawah konten, tidak terpotong -->
-      <div style="display:flex;gap:10px;padding-bottom:env(safe-area-inset-bottom,16px);padding-top:4px">
-        <button type="button" onclick="closeLupaModal()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:14px;border-radius:12px;border:none;cursor:pointer;font-size:14px">Batal</button>
-        <button type="submit" style="flex:1.5;background:#f59e0b;color:#fff;font-weight:700;padding:14px;border-radius:12px;border:none;cursor:pointer;font-size:14px">📤 Kirim Laporan</button>
-      </div>
-    </form>
+    </div>
+    <!-- Tombol FIXED di bawah -->
+    <div style="flex-shrink:0;padding:12px 20px;padding-bottom:max(16px,env(safe-area-inset-bottom));border-top:1px solid #f1f5f9;display:flex;gap:10px">
+      <button type="button" onclick="closeLupaModal()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:14px;border-radius:12px;border:none;cursor:pointer;font-size:14px">Batal</button>
+      <button type="button" onclick="submitLupa()" style="flex:1.5;background:#f59e0b;color:#fff;font-weight:700;padding:14px;border-radius:12px;border:none;cursor:pointer;font-size:14px">📤 Kirim Laporan</button>
+    </div>
   </div>
 </div>
 
+<!-- Hidden form untuk submit lupa absen -->
+<form id="lupaForm" method="POST" action="/lupa-absen" style="display:none">
+  <input type="hidden" name="tanggal" id="lupaHiddenTanggal">
+  <input type="hidden" name="jam_keluar_manual" id="lupaHiddenJam">
+  <input type="hidden" name="alasan" id="lupaHiddenAlasan">
+</form>
+
 <script>
 function openLupaModal(){
-  // Set tanggal default = hari ini
-  const t = document.getElementById('lupaTanggal');
-  if(t) t.value = '{{ today }}';
+  document.getElementById('lupaTanggal2').value = '{{ today }}';
   document.getElementById('lupaModal').style.display='flex';
   document.body.style.overflow='hidden';
 }
@@ -56,9 +63,13 @@ function closeLupaModal(){
   document.getElementById('lupaModal').style.display='none';
   document.body.style.overflow='';
 }
+function submitLupa(){
+  document.getElementById('lupaHiddenTanggal').value = document.getElementById('lupaTanggal2').value;
+  document.getElementById('lupaHiddenJam').value = document.getElementById('lupaJam2').value;
+  document.getElementById('lupaHiddenAlasan').value = document.getElementById('lupaAlasan2').value;
+  document.getElementById('lupaForm').submit();
+}
 </script>
-{% endblock %}
-{% block content %}
 <div style="display:flex;flex-direction:column;gap:16px">
 
   <!-- Profil header + absen button -->
