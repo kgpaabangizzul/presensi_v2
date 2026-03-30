@@ -1,0 +1,44 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Nota Dinas{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0">📄 Kelola Nota Dinas</h2>
+  <div style="display:flex;gap:8px">
+    <a href="?status=draft" style="background:#f1f5f9;color:#374151;padding:8px 12px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:600">Draft</a>
+    <a href="?status=proses" style="background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:600">Proses</a>
+    <a href="?status=selesai" style="background:#d1fae5;color:#065f46;padding:8px 12px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:600">Selesai</a>
+    <a href="?" style="background:#e2e8f0;color:#374151;padding:8px 12px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:600">Semua</a>
+  </div>
+</div>
+{% with msgs = get_flashed_messages(with_categories=true) %}{% for cat,msg in msgs %}
+<div style="padding:12px 14px;border-radius:12px;margin-bottom:12px;font-size:13px;background:{{'#d1fae5' if cat=='success' else '#fee2e2'}};color:{{'#065f46' if cat=='success' else '#991b1b'}}">{{ msg }}</div>
+{% endfor %}{% endwith %}
+{% for n in nota_list %}
+<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);margin-bottom:12px;overflow:hidden;
+  border-left:4px solid {{ '#10b981' if n.status=='selesai' else '#ef4444' if n.status=='ditolak' else '#f59e0b' if n.status=='proses' else '#e2e8f0' }}">
+  <div style="padding:14px 16px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+    <div style="flex:1">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+        <span style="font-size:11px;color:#94a3b8">{{ n.nomor or '-' }}</span>
+        <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;
+          background:{{ '#d1fae5' if n.status=='selesai' else '#fee2e2' if n.status=='ditolak' else '#fef3c7' if n.status=='proses' else '#f1f5f9' }};
+          color:{{ '#065f46' if n.status=='selesai' else '#991b1b' if n.status=='ditolak' else '#92400e' if n.status=='proses' else '#64748b' }}">
+          {{ n.status|title }}
+        </span>
+        <span style="font-size:11px;color:#3b82f6">TTD: {{ n.approved_count }}/{{ n.total_level }}</span>
+      </div>
+      <p style="font-size:14px;font-weight:700;color:#1e293b">{{ n.judul }}</p>
+      <p style="font-size:12px;color:#64748b;margin-top:2px">{{ n.nama_pembuat }} · {{ n.tanggal }}</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0">
+      <a href="/admin/nota-dinas/{{ n.id }}" style="background:#3b82f6;color:#fff;font-size:12px;font-weight:700;padding:8px 14px;border-radius:8px;text-decoration:none">Review & TTD</a>
+      <a href="/nota-dinas/{{ n.id }}/pdf" target="_blank" style="background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;text-decoration:none">📄 PDF</a>
+    </div>
+  </div>
+</div>
+{% else %}
+<div style="text-align:center;padding:48px;color:#94a3b8;background:#fff;border-radius:16px">
+  <p style="font-size:36px">📝</p><p style="font-size:14px;font-weight:600;margin-top:8px">Tidak ada nota dinas</p>
+</div>
+{% endfor %}
+{% endblock %}

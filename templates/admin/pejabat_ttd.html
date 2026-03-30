@@ -1,0 +1,215 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Pejabat TTD{% endblock %}
+{% block content %}
+<div style="padding:0 0 32px">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div>
+      <h2 style="font-size:18px;font-weight:700;color:#1e293b;margin:0">🖊️ Manajemen Pejabat TTD</h2>
+      <p style="font-size:12px;color:#64748b;margin:4px 0 0">Kelola pejabat yang berwenang menandatangani surat &amp; nota dinas</p>
+    </div>
+    <button onclick="openModal('modalTambah')"
+      style="background:#3b82f6;color:#fff;font-weight:700;padding:10px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px">
+      + Tambah Pejabat
+    </button>
+  </div>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div style="padding:12px 16px;border-radius:10px;margin-bottom:14px;font-size:13px;
+      background:{{ '#dcfce7' if cat=='success' else '#fee2e2' }};
+      color:{{ '#166534' if cat=='success' else '#991b1b' }};
+      border:1px solid {{ '#bbf7d0' if cat=='success' else '#fecaca' }}">
+      {{ msg }}
+    </div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- Tabel -->
+  <div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);overflow:hidden">
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#1e293b;color:#fff">
+            <th style="padding:12px 16px;text-align:left;font-weight:600">Nama</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600">Jabatan / NIP</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600">Departemen</th>
+            <th style="padding:12px 16px;text-align:center;font-weight:600">Level</th>
+            <th style="padding:12px 16px;text-align:left;font-weight:600">Role Label</th>
+            <th style="padding:12px 16px;text-align:center;font-weight:600">TTD</th>
+            <th style="padding:12px 16px;text-align:center;font-weight:600">Status</th>
+            <th style="padding:12px 16px;text-align:center;font-weight:600">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in pejabat_list %}
+          <tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <td style="padding:12px 16px;font-weight:600;color:#1e293b">{{ p.nama }}</td>
+            <td style="padding:12px 16px;color:#475569">
+              {{ p.jabatan }}
+              {% if p.nip %}<br><span style="font-size:11px;color:#94a3b8">NIP: {{ p.nip }}</span>{% endif %}
+            </td>
+            <td style="padding:12px 16px;color:#475569">{{ p.nama_dept or '—' }}</td>
+            <td style="padding:12px 16px;text-align:center">
+              <span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700">
+                Level {{ p.level_approval }}
+              </span>
+            </td>
+            <td style="padding:12px 16px;color:#475569">{{ p.role_label }}</td>
+            <td style="padding:12px 16px;text-align:center">
+              {% if p.ttd_file %}
+                <img src="/static/uploads/ttd/{{ p.ttd_file }}"
+                     height="40"
+                     style="border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;background:repeating-conic-gradient(#f1f5f9 0% 25%,#fff 0% 50%) 0 0/10px 10px"
+                     onclick="previewTTD('/static/uploads/ttd/{{ p.ttd_file }}')"
+                     title="Klik untuk preview">
+              {% else %}
+                <span style="font-size:11px;color:#94a3b8">Belum ada</span>
+              {% endif %}
+            </td>
+            <td style="padding:12px 16px;text-align:center">
+              {% if p.aktif %}
+                <span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700">Aktif</span>
+              {% else %}
+                <span style="background:#f1f5f9;color:#64748b;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700">Nonaktif</span>
+              {% endif %}
+            </td>
+            <td style="padding:12px 16px;text-align:center">
+              <button onclick="editPejabat(this)"
+                data-pejabat='{{ p|tojson }}'
+                style="background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px">
+                ✏️ Edit
+              </button>
+              <form method="post" action="/admin/pejabat-ttd/{{ p.id }}/hapus" style="display:inline"
+                    onsubmit="return confirm('Hapus pejabat {{ p.nama }}?')">
+                <button style="background:#ef4444;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">
+                  🗑️ Hapus
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" style="padding:48px;text-align:center;color:#94a3b8">
+              <div style="font-size:40px;margin-bottom:8px">👤</div>
+              <p style="font-size:14px;margin:0 0 12px">Belum ada data pejabat TTD</p>
+              <button onclick="openModal('modalTambah')"
+                style="background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">
+                + Tambah Sekarang
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL BACKDROP ─── -->
+<div id="modalBackdrop" onclick="closeAllModals()"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:998"></div>
+
+<!-- ── MODAL TAMBAH ──────────────────────────────────────────── -->
+<div id="modalTambah"
+  style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+         background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.2);
+         width:90%;max-width:600px;max-height:90vh;overflow-y:auto;z-index:999">
+  <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;background:#3b82f6;border-radius:16px 16px 0 0">
+    <h3 style="color:#fff;font-size:16px;font-weight:700;margin:0">+ Tambah Pejabat TTD</h3>
+    <button onclick="closeAllModals()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px">×</button>
+  </div>
+  <form method="post" action="/admin/pejabat-ttd/tambah" enctype="multipart/form-data" style="padding:24px">
+    {% include 'admin/_form_pejabat.html' %}
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button type="button" onclick="closeAllModals()"
+        style="background:#f1f5f9;color:#475569;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer">
+        Batal
+      </button>
+      <button type="submit"
+        style="background:#3b82f6;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer">
+        💾 Simpan
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- ── MODAL EDIT ────────────────────────────────────────────── -->
+<div id="modalEdit"
+  style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+         background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.2);
+         width:90%;max-width:600px;max-height:90vh;overflow-y:auto;z-index:999">
+  <div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;background:#f59e0b;border-radius:16px 16px 0 0">
+    <h3 style="color:#fff;font-size:16px;font-weight:700;margin:0">✏️ Edit Pejabat TTD</h3>
+    <button onclick="closeAllModals()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px">×</button>
+  </div>
+  <form method="post" id="formEdit" enctype="multipart/form-data" style="padding:24px">
+    {% include 'admin/_form_pejabat.html' %}
+    <div style="margin-top:16px">
+      <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Status</label>
+      <select name="aktif" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;background:#fff">
+        <option value="1">Aktif</option>
+        <option value="0">Nonaktif</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button type="button" onclick="closeAllModals()"
+        style="background:#f1f5f9;color:#475569;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer">
+        Batal
+      </button>
+      <button type="submit"
+        style="background:#f59e0b;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer">
+        💾 Simpan Perubahan
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- ── MODAL PREVIEW TTD ─────────────────────────────────────── -->
+<div id="modalPreview"
+  style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+         background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.2);
+         width:320px;z-index:999">
+  <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+    <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:0">Preview Tanda Tangan</h3>
+    <button onclick="closeAllModals()" style="background:#f1f5f9;border:none;border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:16px">×</button>
+  </div>
+  <div style="padding:20px;text-align:center;background:repeating-conic-gradient(#f1f5f9 0% 25%,#fff 0% 50%) 0 0/16px 16px;border-radius:0 0 16px 16px">
+    <img id="previewImg" src="" style="max-width:100%;max-height:180px;border-radius:8px">
+  </div>
+</div>
+
+<script>
+function openModal(id) {
+  document.getElementById('modalBackdrop').style.display = 'block';
+  document.getElementById(id).style.display = 'block';
+}
+function closeAllModals() {
+  document.getElementById('modalBackdrop').style.display = 'none';
+  ['modalTambah','modalEdit','modalPreview'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+}
+function previewTTD(src) {
+  document.getElementById('previewImg').src = src;
+  openModal('modalPreview');
+}
+function editPejabat(btn) {
+  const p = JSON.parse(btn.getAttribute('data-pejabat'));
+  const f = document.getElementById('formEdit');
+  f.action = `/admin/pejabat-ttd/${p.id}/edit`;
+  const set = (name, val) => { if (f[name]) f[name].value = val ?? ''; };
+  set('nama',           p.nama);
+  set('jabatan',        p.jabatan);
+  set('nip',            p.nip);
+  set('departemen_id',  p.departemen_id);
+  set('level_approval', p.level_approval);
+  set('role_label',     p.role_label);
+  set('urutan',         p.urutan);
+  if (f['aktif']) f['aktif'].value = p.aktif;
+  openModal('modalEdit');
+}
+</script>
+{% endblock %}

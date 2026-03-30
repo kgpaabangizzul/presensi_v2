@@ -1,0 +1,65 @@
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  <div>
+    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">
+      Nama Lengkap <span style="color:#ef4444">*</span>
+    </label>
+    <input type="text" name="nama" required placeholder="dr. Budi Santoso, M.Kes"
+      style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff"
+      onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#e2e8f0'">
+  </div>
+  <div>
+    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">
+      Jabatan <span style="color:#ef4444">*</span>
+    </label>
+    <input type="text" name="jabatan" required placeholder="Kepala Rumah Sakit"
+      style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff"
+      onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#e2e8f0'">
+  </div>
+  <div>
+    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">NIP / No. Identitas</label>
+    <input type="text" name="nip" placeholder="Opsional"
+      style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff"
+      onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#e2e8f0'">
+  </div>
+  <div>
+    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Departemen</label>
+    <select name="departemen_id"
+      style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;background:#fff;box-sizing:border-box">
+      <option value="">-- Semua Departemen --</option>
+      {% for d in depts %}
+      <option value="{{ d.id }}">{{ d.nama }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">
+      Level Approval <span style="color:#ef4444">*</span>
+    </label>
+    <input type="number" name="level_approval" required min="1" max="10" value="1"
+      style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff"
+      onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#e2e8f0'">
+    <p style="font-size:11px;color:#94a3b8;margin:4px 0 0">Urutan tanda tangan (1 = pertama)</p>
+  </div>
+  <div>
+    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Urutan Tampil</label>
+    <input type="number" name="urutan" min="0" value="0"
+      style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff"
+      onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#e2e8f0'">
+    <p style="font-size:11px;color:#94a3b8;margin:4px 0 0">Jika level sama, urutkan dengan ini</p>
+  </div>
+  <div style="grid-column:span 2">
+    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Role Label</label>
+    <input type="text" name="role_label" placeholder="Contoh: Direktur, Kabid, Karumkit"
+      style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff"
+      onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#e2e8f0'">
+    <p style="font-size:11px;color:#94a3b8;margin:4px 0 0">Label yang tampil di dokumen surat/nota dinas</p>
+  </div>
+  <div style="grid-column:span 2">
+    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Upload Tanda Tangan</label>
+    <input type="file" name="ttd_file" accept=".png,.jpg,.jpeg"
+      style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff">
+    <p style="font-size:11px;color:#94a3b8;margin:4px 0 0">
+      Format PNG/JPG. Disarankan PNG transparan agar bersih di dokumen. Ukuran ideal: 300×100px.
+    </p>
+  </div>
+</div>

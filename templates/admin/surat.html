@@ -1,0 +1,108 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Surat Perintah{% endblock %}
+{% block content %}
+<style>
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);margin-bottom:16px;overflow:hidden}
+.input-f{width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff}
+.input-f:focus{outline:none;border-color:#3b82f6}
+</style>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0">📋 Kelola Surat Perintah</h2>
+  <button onclick="document.getElementById('modalBuat').style.display='flex';document.body.style.overflow='hidden'"
+    style="background:#3b82f6;color:#fff;font-weight:700;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:13px">+ Buat Surat</button>
+</div>
+{% with msgs = get_flashed_messages(with_categories=true) %}{% for cat,msg in msgs %}
+<div style="padding:12px 14px;border-radius:12px;margin-bottom:12px;font-size:13px;background:{{'#d1fae5' if cat=='success' else '#fee2e2'}};color:{{'#065f46' if cat=='success' else '#991b1b'}}">{{ msg }}</div>
+{% endfor %}{% endwith %}
+{% for s in surat_list %}
+<div class="card">
+  <div style="padding:14px 16px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+    <div style="flex:1">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+        <span style="font-size:11px;color:#94a3b8">{{ s.nomor }}</span>
+        <span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:99px;font-size:11px">{{ s.sudah_baca }}/{{ s.total_penerima }} Dibaca</span>
+      </div>
+      <p style="font-size:14px;font-weight:700;color:#1e293b">{{ s.judul }}</p>
+      <p style="font-size:12px;color:#64748b;margin-top:4px">{{ s.pembuat }} · {{ s.tanggal }}</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0">
+      <a href="/admin/surat/{{ s.id }}" style="background:#f1f5f9;color:#374151;font-size:12px;font-weight:600;padding:7px 12px;border-radius:8px;text-decoration:none">Detail</a>
+      <a href="/surat/{{ s.id }}/pdf" target="_blank" style="background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:600;padding:7px 12px;border-radius:8px;text-decoration:none">📄 PDF</a>
+    </div>
+  </div>
+</div>
+{% else %}
+<div style="text-align:center;padding:48px;color:#94a3b8;background:#fff;border-radius:16px">
+  <p style="font-size:36px">📭</p><p style="font-size:14px;font-weight:600;margin-top:8px">Belum ada surat perintah</p>
+</div>
+{% endfor %}
+
+<!-- Modal Buat Surat -->
+<div id="modalBuat" onclick="if(event.target===this){this.style.display='none';document.body.style.overflow=''}"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:20px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto">
+    <div style="padding:20px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">📋 Buat Surat Perintah</h3>
+      <button onclick="this.closest('#modalBuat')||document.getElementById('modalBuat').style.display='none';document.body.style.overflow=''"
+        style="background:#f1f5f9;border:none;border-radius:99px;width:30px;height:30px;cursor:pointer;font-size:14px"
+        onclick="document.getElementById('modalBuat').style.display='none';document.body.style.overflow=''">✕</button>
+    </div>
+    <form method="POST" action="/admin/surat/buat" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Template Surat</label>
+        <select name="template_id" class="input-f" onchange="loadTemplate(this.value)">
+          <option value="">-- Tanpa template (isi manual) --</option>
+          {% for t in templates %}<option value="{{ t.id }}">{{ t.nama }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Judul Surat *</label>
+        <input type="text" name="judul" id="suratJudul" class="input-f" required placeholder="contoh: Surat Perintah Tugas Dinas">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Tanggal</label>
+        <input type="date" name="tanggal" class="input-f" value="{{ today if today else '' }}">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Isi Surat *</label>
+        <textarea name="isi" id="suratIsi" rows="8" class="input-f" required style="resize:vertical;font-size:12px;line-height:1.6;font-family:monospace"
+          placeholder="Gunakan {{nama}}, {{jabatan}}, {{departemen}}, {{tanggal}} sebagai variabel yang otomatis diisi."></textarea>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Penerima *</label>
+        <div style="max-height:200px;overflow-y:auto;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px">
+          <div style="margin-bottom:8px">
+            <input type="text" id="searchPenerima" placeholder="Cari nama pegawai..." oninput="filterPenerima(this.value)"
+              style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;box-sizing:border-box">
+          </div>
+          {% for u in users %}
+          <label style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:8px;cursor:pointer;font-size:13px" class="penerima-item" data-nama="{{ u.nama|lower }}">
+            <input type="checkbox" name="penerima_ids" value="{{ u.id }}" style="width:15px;height:15px;accent-color:#3b82f6">
+            <div><p style="margin:0;font-weight:600;color:#1e293b">{{ u.nama }}</p><p style="margin:0;font-size:11px;color:#64748b">{{ u.jabatan or '-' }} · {{ u.departemen or '-' }}</p></div>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button type="button" onclick="document.getElementById('modalBuat').style.display='none';document.body.style.overflow=''"
+          style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:12px;border-radius:10px;border:none;cursor:pointer">Batal</button>
+        <button type="submit" style="flex:1.5;background:#3b82f6;color:#fff;font-weight:700;padding:12px;border-radius:10px;border:none;cursor:pointer">📤 Kirim Surat</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function filterPenerima(q){
+  document.querySelectorAll('.penerima-item').forEach(el=>{
+    el.style.display=el.dataset.nama.includes(q.toLowerCase())?'flex':'none';
+  });
+}
+function loadTemplate(id){
+  if(!id)return;
+  fetch('/api/surat-template/'+id).then(r=>r.json()).then(t=>{
+    if(t.nama)document.getElementById('suratJudul').value=t.nama;
+    if(t.konten)document.getElementById('suratIsi').value=t.konten;
+  });
+}
+</script>
+{% endblock %}

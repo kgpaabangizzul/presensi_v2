@@ -1,0 +1,108 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Detail Surat Perintah{% endblock %}
+{% block content %}
+<div style="padding:0 0 32px">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <a href="/admin/surat"
+        style="background:#f1f5f9;color:#475569;border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:6px">
+        ← Kembali
+      </a>
+      <div>
+        <h2 style="font-size:18px;font-weight:700;color:#1e293b;margin:0">📋 Detail Surat Perintah</h2>
+        <p style="font-size:12px;color:#64748b;margin:4px 0 0">{{ surat.nomor or '-' }}</p>
+      </div>
+    </div>
+    <a href="/surat/{{ surat.id }}/pdf" target="_blank"
+      style="background:#ef4444;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:6px">
+      📄 Download PDF
+    </a>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+    <!-- Info Surat -->
+    <div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:24px">
+      <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 16px;padding-bottom:12px;border-bottom:1px solid #f1f5f9">
+        📋 Informasi Surat
+      </h3>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+        <div style="display:flex;gap:8px">
+          <span style="color:#94a3b8;min-width:110px">Nomor</span>
+          <span style="color:#1e293b;font-weight:600">{{ surat.nomor or '-' }}</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span style="color:#94a3b8;min-width:110px">Judul</span>
+          <span style="color:#1e293b;font-weight:600">{{ surat.judul }}</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span style="color:#94a3b8;min-width:110px">Tanggal</span>
+          <span style="color:#1e293b">{{ surat.tanggal }}</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span style="color:#94a3b8;min-width:110px">Dibuat oleh</span>
+          <span style="color:#1e293b">{{ surat.pembuat }} <span style="color:#94a3b8">({{ surat.pembuat_jabatan or '-' }})</span></span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span style="color:#94a3b8;min-width:110px">Status</span>
+          <span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700">
+            {{ surat.status or 'aktif' }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Isi Surat -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9">
+        <p style="font-size:12px;font-weight:600;color:#374151;margin:0 0 10px">Isi Surat</p>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px;font-size:13px;color:#475569;line-height:1.7;white-space:pre-wrap">{{ surat.isi }}</div>
+      </div>
+    </div>
+
+    <!-- Daftar Penerima -->
+    <div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #f1f5f9">
+        <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:0">👥 Daftar Penerima</h3>
+        <div style="display:flex;gap:8px">
+          <span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700">
+            Total: {{ penerima|length }}
+          </span>
+          <span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700">
+            Dibaca: {{ penerima|selectattr('dibaca','equalto',1)|list|length }}
+          </span>
+        </div>
+      </div>
+
+      {% if penerima %}
+      <div style="display:flex;flex-direction:column;gap:8px">
+        {% for p in penerima %}
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px">
+          <div>
+            <p style="font-size:13px;font-weight:600;color:#1e293b;margin:0">{{ p.nama }}</p>
+            <p style="font-size:11px;color:#94a3b8;margin:2px 0 0">{{ p.jabatan or '-' }} · {{ p.departemen or '-' }}</p>
+          </div>
+          <div style="text-align:right">
+            {% if p.dibaca %}
+              <span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700">✓ Dibaca</span>
+              {% if p.dibaca_at %}
+              <p style="font-size:10px;color:#94a3b8;margin:3px 0 0">{{ p.dibaca_at }}</p>
+              {% endif %}
+            {% else %}
+              <span style="background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700">Belum dibaca</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="text-align:center;padding:32px;color:#94a3b8">
+        <div style="font-size:32px;margin-bottom:8px">👤</div>
+        <p style="font-size:13px;margin:0">Belum ada penerima</p>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

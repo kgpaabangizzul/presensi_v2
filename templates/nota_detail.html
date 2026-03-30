@@ -1,0 +1,53 @@
+{% extends 'layout.html' %}
+{% block page_title %}Detail Nota Dinas{% endblock %}
+{% block content %}
+<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+  <a href="/nota-dinas" style="font-size:13px;color:#3b82f6;text-decoration:none">← Kembali</a>
+  <a href="/nota-dinas/{{ nota.id }}/pdf" target="_blank"
+    style="background:#3b82f6;color:#fff;font-size:12px;font-weight:700;padding:8px 14px;border-radius:10px;text-decoration:none">📄 Download PDF</a>
+</div>
+<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);overflow:hidden;margin-bottom:14px">
+  <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px;color:#fff">
+    <span style="font-size:11px;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:99px">{{ nota.nomor or 'ND/-' }}</span>
+    <h2 style="font-size:16px;font-weight:800;margin:8px 0 4px">{{ nota.judul }}</h2>
+    <p style="font-size:12px;color:#bfdbfe">{{ nota.tanggal }} · {{ nota.nama_pembuat }}</p>
+    {% if nota.perihal %}<p style="font-size:12px;color:#93c5fd;margin-top:2px">Perihal: {{ nota.perihal }}</p>{% endif %}
+  </div>
+  <div style="padding:16px">
+    <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Kepada: {{ nota.kepada or '-' }}</p>
+    <div style="background:#f8fafc;border-radius:12px;padding:14px;font-size:13px;line-height:1.8;color:#1e293b;white-space:pre-line">{{ nota.isi }}</div>
+  </div>
+</div>
+<!-- Alur TTD -->
+<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:16px">
+  <p style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:14px">✍️ Status Persetujuan</p>
+  {% for ap in approvals %}
+  <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+    <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+      <div style="width:36px;height:36px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;
+        background:{{ '#d1fae5' if ap.status=='approved' else '#fee2e2' if ap.status=='rejected' else '#f1f5f9' }};
+        color:{{ '#065f46' if ap.status=='approved' else '#991b1b' if ap.status=='rejected' else '#94a3b8' }}">
+        {{ '✓' if ap.status=='approved' else '✗' if ap.status=='rejected' else ap.level }}
+      </div>
+      {% if not loop.last %}<div style="width:2px;height:20px;background:#e2e8f0;margin:4px 0"></div>{% endif %}
+    </div>
+    <div style="flex:1;padding-top:4px">
+      <p style="font-size:13px;font-weight:700;color:#1e293b">{{ ap.role_label }}</p>
+      {% if ap.approver_nama %}<p style="font-size:12px;color:#64748b;margin-top:2px">{{ ap.approver_nama }}</p>{% endif %}
+      {% if ap.status=='approved' %}
+        <span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">✓ Disetujui</span>
+        {% if ap.approved_at %}<span style="font-size:10px;color:#94a3b8;margin-left:6px">{{ ap.approved_at.strftime('%d %b %Y %H:%M') if ap.approved_at else '' }}</span>{% endif %}
+      {% elif ap.status=='rejected' %}
+        <span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">✗ Ditolak</span>
+      {% else %}
+        <span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:11px">⏳ Menunggu</span>
+      {% endif %}
+      {% if ap.catatan %}<p style="font-size:11px;color:#64748b;margin-top:4px;font-style:italic">{{ ap.catatan }}</p>{% endif %}
+      {% if ap.ttd_file %}
+      <img src="/static/uploads/ttd/{{ ap.ttd_file }}" style="height:50px;margin-top:6px;border:1px solid #e2e8f0;border-radius:8px;padding:4px;background:#fff">
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

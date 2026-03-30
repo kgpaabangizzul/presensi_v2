@@ -1,0 +1,46 @@
+{% extends 'layout.html' %}
+{% block page_title %}Buat Nota Dinas{% endblock %}
+{% block content %}
+<div style="margin-bottom:12px"><a href="/nota-dinas" style="font-size:13px;color:#3b82f6;text-decoration:none">← Kembali</a></div>
+<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px">
+  <h2 style="font-size:16px;font-weight:800;color:#1e293b;margin:0 0 16px">📄 Buat Nota Dinas Baru</h2>
+  <form method="POST" action="/nota-dinas/buat" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:14px">
+    <div>
+      <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Judul Nota Dinas *</label>
+      <input type="text" name="judul" class="input-field" required placeholder="contoh: Nota Dinas Pengadaan ATK">
+    </div>
+    <div>
+      <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Perihal</label>
+      <input type="text" name="perihal" class="input-field" placeholder="contoh: Permintaan pengadaan alat tulis kantor">
+    </div>
+    <div>
+      <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Kepada</label>
+      <input type="text" name="kepada" class="input-field" placeholder="contoh: Kepala TUUD RS Slamet Riyadi">
+    </div>
+    <div>
+      <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Isi Nota Dinas *</label>
+      <textarea name="isi" rows="8" class="input-field" required placeholder="Tulis isi nota dinas..." style="resize:vertical;font-size:13px;line-height:1.6"></textarea>
+    </div>
+    <div>
+      <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Lampiran (PDF/JPG, opsional)</label>
+      <input type="file" name="lampiran" accept=".pdf,.jpg,.jpeg,.png"
+        style="width:100%;padding:9px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:#fff;box-sizing:border-box">
+    </div>
+    <!-- Info alur TTD -->
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px">
+      <p style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:8px">📋 Alur Persetujuan</p>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        {% for label in ['Kepala TUUD','Waka Rumkit','Karumkit','Pejabat Pengadaan'] %}
+        <span style="background:#dbeafe;color:#1d4ed8;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:600">{{ loop.index }}. {{ label }}</span>
+        {% if not loop.last %}<span style="color:#94a3b8;font-size:12px">→</span>{% endif %}
+        {% endfor %}
+      </div>
+      <p style="font-size:11px;color:#64748b;margin-top:8px">Nota dinas akan melalui persetujuan berjenjang sesuai urutan di atas.</p>
+    </div>
+    <div style="display:flex;gap:10px">
+      <a href="/nota-dinas" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:13px;border-radius:12px;text-align:center;text-decoration:none;font-size:14px">Batal</a>
+      <button type="submit" style="flex:1.5;background:#3b82f6;color:#fff;font-weight:700;padding:13px;border-radius:12px;border:none;cursor:pointer;font-size:14px">📤 Kirim Nota Dinas</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

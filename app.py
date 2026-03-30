@@ -30,6 +30,8 @@ def load_global_settings():
         g.settings = {}
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads', 'photos')
 app.config['DOSIR_FOLDER']  = os.path.join('static', 'uploads', 'dosir')
+app.config['SURAT_FOLDER']  = os.path.join('static', 'uploads', 'surat')
+app.config['TTD_FOLDER']    = os.path.join('static', 'uploads', 'ttd')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_LAMPIRAN   = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
@@ -168,6 +170,99 @@ def init_db():
     """)
 
     cur.execute("INSERT INTO settings (id, nama_perusahaan) VALUES (1, 'PT. Absensi Digital') ON CONFLICT DO NOTHING")
+
+    # ── SURAT PERINTAH & NOTA DINAS ───────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS surat_template (
+            id SERIAL PRIMARY KEY,
+            nama TEXT NOT NULL,
+            jenis TEXT NOT NULL DEFAULT 'surat_perintah',
+            konten TEXT NOT NULL,
+            aktif INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS surat_perintah (
+            id SERIAL PRIMARY KEY,
+            nomor TEXT UNIQUE,
+            template_id INTEGER REFERENCES surat_template(id),
+            judul TEXT NOT NULL,
+            isi TEXT NOT NULL,
+            dibuat_oleh INTEGER REFERENCES users(id),
+            tanggal DATE DEFAULT CURRENT_DATE,
+            status TEXT DEFAULT 'aktif',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS surat_penerima (
+            id SERIAL PRIMARY KEY,
+            surat_id INTEGER NOT NULL REFERENCES surat_perintah(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            dibaca INTEGER DEFAULT 0,
+            dibaca_at TIMESTAMP,
+            UNIQUE(surat_id, user_id)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nota_dinas (
+            id SERIAL PRIMARY KEY,
+            nomor TEXT UNIQUE,
+            judul TEXT NOT NULL,
+            isi TEXT NOT NULL,
+            perihal TEXT,
+            dari_user INTEGER NOT NULL REFERENCES users(id),
+            kepada TEXT,
+            tanggal DATE DEFAULT CURRENT_DATE,
+            status TEXT DEFAULT 'draft',
+            lampiran TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nota_approval (
+            id SERIAL PRIMARY KEY,
+            nota_id INTEGER NOT NULL REFERENCES nota_dinas(id) ON DELETE CASCADE,
+            level INTEGER NOT NULL,
+            role_label TEXT NOT NULL,
+            user_id INTEGER REFERENCES users(id),
+            status TEXT DEFAULT 'pending',
+            catatan TEXT,
+            ttd_file TEXT,
+            approved_at TIMESTAMP,
+            urutan INTEGER DEFAULT 0
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS notifikasi (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            judul TEXT NOT NULL,
+            pesan TEXT,
+            tipe TEXT DEFAULT 'info',
+            ref_id INTEGER,
+            ref_type TEXT,
+            dibaca INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    # Approval roles default
+    cur.execute("""
+        INSERT INTO surat_template (nama, jenis, konten) VALUES
+        ('Surat Perintah Tugas', 'surat_perintah',
+         'Diperintahkan kepada:
+
+Nama    : {{nama}}
+Jabatan : {{jabatan}}
+Unit    : {{departemen}}
+
+Untuk melaksanakan tugas:
+{{isi}}
+
+Dilaksanakan mulai tanggal {{tanggal}} s.d. selesai.')
+        ON CONFLICT DO NOTHING
+    """)
     # Tambah kolom logo jika belum ada
     try:
         cur.execute("ALTER TABLE settings ADD COLUMN IF NOT EXISTS logo TEXT")
@@ -223,6 +318,108 @@ def init_db():
               ('Shift Fleksibel','07:00','16:00',30,'Jam fleksibel','#06b6d4')]
     for s in shifts:
         cur.execute("INSERT INTO shift (nama,jam_masuk,jam_keluar,toleransi_menit,deskripsi,warna) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", s)
+
+
+    # ── MODUL SURAT & NOTA DINAS ─────────────────────────────────────────────
+
+    # Template surat
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS surat_template (
+            id SERIAL PRIMARY KEY,
+            nama TEXT NOT NULL,
+            jenis TEXT NOT NULL DEFAULT 'surat_perintah',
+            kode TEXT UNIQUE,
+            konten TEXT NOT NULL,
+            deskripsi TEXT,
+            aktif INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Surat Perintah
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS surat_perintah (
+            id SERIAL PRIMARY KEY,
+            nomor_surat TEXT UNIQUE NOT NULL,
+            template_id INTEGER REFERENCES surat_template(id),
+            judul TEXT NOT NULL,
+            dasar TEXT,
+            isi TEXT NOT NULL,
+            tanggal_surat DATE NOT NULL,
+            tanggal_mulai DATE,
+            tanggal_selesai DATE,
+            pembuat_id INTEGER REFERENCES users(id),
+            status TEXT DEFAULT 'aktif',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Penerima surat perintah
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS surat_penerima (
+            id SERIAL PRIMARY KEY,
+            surat_id INTEGER NOT NULL REFERENCES surat_perintah(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            dibaca INTEGER DEFAULT 0,
+            dibaca_at TIMESTAMP,
+            UNIQUE(surat_id, user_id)
+        )
+    """)
+
+    # Nota Dinas
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nota_dinas (
+            id SERIAL PRIMARY KEY,
+            nomor_nota TEXT UNIQUE NOT NULL,
+            template_id INTEGER REFERENCES surat_template(id),
+            pengaju_id INTEGER NOT NULL REFERENCES users(id),
+            perihal TEXT NOT NULL,
+            isi TEXT NOT NULL,
+            tanggal_nota DATE NOT NULL,
+            status TEXT DEFAULT 'draft',
+            current_step INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Alur TTD nota dinas
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nota_approval (
+            id SERIAL PRIMARY KEY,
+            nota_id INTEGER NOT NULL REFERENCES nota_dinas(id) ON DELETE CASCADE,
+            step INTEGER NOT NULL,
+            role_label TEXT NOT NULL,
+            approver_id INTEGER REFERENCES users(id),
+            status TEXT DEFAULT 'pending',
+            catatan TEXT,
+            ttd_image TEXT,
+            approved_at TIMESTAMP,
+            UNIQUE(nota_id, step)
+        )
+    """)
+
+    # Notifikasi
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS notifikasi (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            judul TEXT NOT NULL,
+            pesan TEXT,
+            tipe TEXT DEFAULT 'info',
+            ref_id INTEGER,
+            ref_type TEXT,
+            dibaca INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Default TTD workflow roles
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS jabatan_kode TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ttd_image TEXT")
+    except Exception:
+        pass
+
 
     conn.commit()
     cur.close()
@@ -929,12 +1126,13 @@ def edit_pegawai(uid):
                 fn = secure_filename(f"user_{uid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{f.filename.rsplit('.',1)[-1].lower()}")
                 f.save(os.path.join(app.config['UPLOAD_FOLDER'], fn)); foto_path = fn
         fields = ["nik=%s","nama=%s","email=%s","jabatan=%s","departemen=%s","departemen_id=%s",
-                  "shift_id=%s","no_hp=%s","alamat=%s","tanggal_lahir=%s","jenis_kelamin=%s","status=%s"]
+                  "shift_id=%s","no_hp=%s","alamat=%s","tanggal_lahir=%s","jenis_kelamin=%s","status=%s","role=%s"]
         params = [request.form['nik'], request.form['nama'], request.form['email'],
                   request.form.get('jabatan',''), dept_nama, dept_id,
                   request.form.get('shift_id') or None, request.form.get('no_hp',''),
                   request.form.get('alamat',''), request.form.get('tanggal_lahir',''),
-                  request.form.get('jenis_kelamin',''), request.form.get('status','active')]
+                  request.form.get('jenis_kelamin',''), request.form.get('status','active'),
+                  request.form.get('role','user')]
         if foto_path: fields.append("foto=%s"); params.append(foto_path)
         if request.form.get('password'): fields.append("password=%s"); params.append(generate_password_hash(request.form['password']))
         params.append(uid)
@@ -1245,6 +1443,146 @@ def api_shift_by_dept(dept_id):
     cur.close(); conn.close()
     return jsonify([dict(s) for s in shifts])
 
+# ── UBAH PASSWORD ─────────────────────────────────────────────────────────────
+
+@app.route('/ubah-password', methods=['POST'])
+@login_required
+def ubah_password():
+    uid = session['user_id']
+    pw_lama = request.form.get('password_lama','')
+    pw_baru = request.form.get('password_baru','')
+    pw_konfirm = request.form.get('password_konfirm','')
+    if not pw_baru or len(pw_baru) < 6:
+        flash('Password baru minimal 6 karakter.', 'error')
+        return redirect(url_for('profil'))
+    if pw_baru != pw_konfirm:
+        flash('Konfirmasi password tidak cocok.', 'error')
+        return redirect(url_for('profil'))
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT password FROM users WHERE id=%s", (uid,))
+    user = cur.fetchone()
+    if not user or not check_password_hash(user['password'], pw_lama):
+        flash('Password lama salah.', 'error')
+        cur.close(); conn.close()
+        return redirect(url_for('profil'))
+    cur.execute("UPDATE users SET password=%s WHERE id=%s", (generate_password_hash(pw_baru), uid))
+    conn.commit(); cur.close(); conn.close()
+    flash('Password berhasil diubah!', 'success')
+    return redirect(url_for('profil'))
+
+@app.route('/admin/pegawai/<int:uid>/ubah-password', methods=['POST'])
+@admin_required
+def admin_ubah_password(uid):
+    pw_baru = request.form.get('password_baru','')
+    pw_konfirm = request.form.get('password_konfirm','')
+    if not pw_baru or len(pw_baru) < 6:
+        flash('Password baru minimal 6 karakter.', 'error')
+        return redirect(url_for('edit_pegawai', uid=uid))
+    if pw_baru != pw_konfirm:
+        flash('Konfirmasi password tidak cocok.', 'error')
+        return redirect(url_for('edit_pegawai', uid=uid))
+    conn = get_db(); cur = q(conn)
+    cur.execute("UPDATE users SET password=%s WHERE id=%s", (generate_password_hash(pw_baru), uid))
+    conn.commit(); cur.close(); conn.close()
+    flash('Password pegawai berhasil diubah!', 'success')
+    return redirect(url_for('edit_pegawai', uid=uid))
+
+# ── PEJABAT TTD ───────────────────────────────────────────────────────────────
+
+@app.route('/admin/pejabat-ttd')
+@admin_required
+def admin_pejabat_ttd():
+    conn = get_db(); cur = q(conn)
+    # Buat tabel jika belum ada
+    cur2 = conn.cursor()
+    cur2.execute("""CREATE TABLE IF NOT EXISTS pejabat_ttd (
+        id SERIAL PRIMARY KEY, nama TEXT NOT NULL, jabatan TEXT NOT NULL,
+        nip TEXT, departemen_id INTEGER REFERENCES departemen(id) ON DELETE SET NULL,
+        level_approval INTEGER NOT NULL DEFAULT 1, role_label TEXT NOT NULL DEFAULT 'Pejabat',
+        ttd_file TEXT, aktif INTEGER DEFAULT 1, urutan INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    conn.commit(); cur2.close()
+    cur.execute("""SELECT p.*, d.nama as nama_dept FROM pejabat_ttd p
+        LEFT JOIN departemen d ON p.departemen_id=d.id ORDER BY p.level_approval, p.urutan""")
+    pejabat_list = cur.fetchall()
+    cur.execute("SELECT * FROM departemen WHERE aktif=1 ORDER BY nama")
+    depts = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/pejabat_ttd.html', pejabat_list=pejabat_list, depts=depts)
+
+@app.route('/admin/pejabat-ttd/tambah', methods=['POST'])
+@admin_required
+def admin_pejabat_ttd_tambah():
+    nama=request.form.get('nama','').strip(); jabatan=request.form.get('jabatan','').strip()
+    nip=request.form.get('nip','').strip(); dept_id=request.form.get('departemen_id') or None
+    level=int(request.form.get('level_approval',1)); role_label=request.form.get('role_label','').strip() or jabatan
+    urutan=int(request.form.get('urutan',0))
+    ttd_file=None; f=request.files.get('ttd_file')
+    if f and f.filename:
+        ext=f.filename.rsplit('.',1)[-1].lower()
+        if ext in {'png','jpg','jpeg'}:
+            os.makedirs(app.config['TTD_FOLDER'],exist_ok=True)
+            fn=secure_filename(f"pjb_{nama.replace(' ','_')}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+            f.save(os.path.join(app.config['TTD_FOLDER'],fn)); ttd_file=fn
+    conn=get_db(); cur=q(conn)
+    cur.execute("""INSERT INTO pejabat_ttd (nama,jabatan,nip,departemen_id,level_approval,role_label,ttd_file,urutan)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""", (nama,jabatan,nip,dept_id,level,role_label,ttd_file,urutan))
+    conn.commit(); cur.close(); conn.close()
+    flash(f'Pejabat {nama} berhasil ditambahkan.','success')
+    return redirect(url_for('admin_pejabat_ttd'))
+
+@app.route('/admin/pejabat-ttd/<int:pid>/edit', methods=['POST'])
+@admin_required
+def admin_pejabat_ttd_edit(pid):
+    nama=request.form.get('nama','').strip(); jabatan=request.form.get('jabatan','').strip()
+    nip=request.form.get('nip','').strip(); dept_id=request.form.get('departemen_id') or None
+    level=int(request.form.get('level_approval',1)); role_label=request.form.get('role_label','').strip() or jabatan
+    urutan=int(request.form.get('urutan',0)); aktif=int(request.form.get('aktif',1))
+    conn=get_db(); cur=q(conn)
+    f=request.files.get('ttd_file')
+    if f and f.filename:
+        ext=f.filename.rsplit('.',1)[-1].lower()
+        if ext in {'png','jpg','jpeg'}:
+            os.makedirs(app.config['TTD_FOLDER'],exist_ok=True)
+            fn=secure_filename(f"pjb_{pid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+            f.save(os.path.join(app.config['TTD_FOLDER'],fn))
+            cur.execute("""UPDATE pejabat_ttd SET nama=%s,jabatan=%s,nip=%s,departemen_id=%s,
+                level_approval=%s,role_label=%s,ttd_file=%s,urutan=%s,aktif=%s WHERE id=%s""",
+                (nama,jabatan,nip,dept_id,level,role_label,fn,urutan,aktif,pid))
+        else:
+            cur.execute("""UPDATE pejabat_ttd SET nama=%s,jabatan=%s,nip=%s,departemen_id=%s,
+                level_approval=%s,role_label=%s,urutan=%s,aktif=%s WHERE id=%s""",
+                (nama,jabatan,nip,dept_id,level,role_label,urutan,aktif,pid))
+    else:
+        cur.execute("""UPDATE pejabat_ttd SET nama=%s,jabatan=%s,nip=%s,departemen_id=%s,
+            level_approval=%s,role_label=%s,urutan=%s,aktif=%s WHERE id=%s""",
+            (nama,jabatan,nip,dept_id,level,role_label,urutan,aktif,pid))
+    conn.commit(); cur.close(); conn.close()
+    flash('Data pejabat berhasil diperbarui.','success')
+    return redirect(url_for('admin_pejabat_ttd'))
+
+@app.route('/admin/pejabat-ttd/<int:pid>/hapus', methods=['POST'])
+@admin_required
+def admin_pejabat_ttd_hapus(pid):
+    conn=get_db(); cur=q(conn)
+    cur.execute("DELETE FROM pejabat_ttd WHERE id=%s",(pid,))
+    conn.commit(); cur.close(); conn.close()
+    flash('Pejabat berhasil dihapus.','success')
+    return redirect(url_for('admin_pejabat_ttd'))
+
+@app.route('/api/pejabat-ttd')
+@login_required
+def api_pejabat_ttd():
+    level=request.args.get('level',type=int)
+    conn=get_db(); cur=q(conn)
+    if level:
+        cur.execute("""SELECT id,nama,jabatan,role_label,ttd_file FROM pejabat_ttd
+            WHERE aktif=1 AND level_approval=%s ORDER BY urutan""",(level,))
+    else:
+        cur.execute("""SELECT id,nama,jabatan,role_label,level_approval,ttd_file
+            FROM pejabat_ttd WHERE aktif=1 ORDER BY level_approval,urutan""")
+    data=cur.fetchall(); cur.close(); conn.close()
+    return jsonify(data)
 
 
 
@@ -1466,6 +1804,491 @@ def admin_dosir_view(fid):
     path = os.path.join(app.config['DOSIR_FOLDER'], df['filename'])
     return send_file(path, as_attachment=False)
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── HELPER NOTIFIKASI ─────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+def kirim_notif(conn, user_id, judul, pesan, tipe='info', ref_id=None, ref_type=None):
+    cur = conn.cursor()
+    cur.execute("""INSERT INTO notifikasi (user_id,judul,pesan,tipe,ref_id,ref_type)
+        VALUES (%s,%s,%s,%s,%s,%s)""", (user_id, judul, pesan, tipe, ref_id, ref_type))
+    cur.close()
+
+@app.route('/api/notifikasi')
+@login_required
+def api_notifikasi():
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT * FROM notifikasi WHERE user_id=%s ORDER BY created_at DESC LIMIT 20""", (uid,))
+    notifs = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT COUNT(*) as c FROM notifikasi WHERE user_id=%s AND dibaca=0", (uid,))
+    unread = cur.fetchone()['c']
+    cur.close(); conn.close()
+    return jsonify({'notifs': notifs, 'unread': unread})
+
+@app.route('/notifikasi/baca/<int:nid>', methods=['POST'])
+@login_required
+def baca_notif(nid):
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("UPDATE notifikasi SET dibaca=1 WHERE id=%s AND user_id=%s", (nid, uid))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
+
+@app.route('/notifikasi/baca-semua', methods=['POST'])
+@login_required
+def baca_semua_notif():
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("UPDATE notifikasi SET dibaca=1 WHERE user_id=%s", (uid,))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
+
+@app.route('/notifikasi')
+@login_required
+def halaman_notifikasi():
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT * FROM notifikasi WHERE user_id=%s ORDER BY created_at DESC LIMIT 50""", (uid,))
+    notifs = [dict(r) for r in cur.fetchall()]
+    # Tandai semua sebagai dibaca saat halaman dibuka
+    cur.execute("UPDATE notifikasi SET dibaca=1 WHERE user_id=%s", (uid,))
+    conn.commit(); cur.close(); conn.close()
+    return render_template('notifikasi.html', notifs=notifs)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── SURAT PERINTAH ────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/surat')
+@login_required
+def surat_user():
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT sp.*, u.nama as pembuat, sp2.dibaca
+        FROM surat_penerima sp2
+        JOIN surat_perintah sp ON sp.id=sp2.surat_id
+        JOIN users u ON sp.dibuat_oleh=u.id
+        WHERE sp2.user_id=%s ORDER BY sp.created_at DESC""", (uid,))
+    surat_list = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('surat_user.html', surat_list=surat_list)
+
+@app.route('/surat/<int:sid>')
+@login_required
+def surat_detail(sid):
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    # Tandai sudah dibaca
+    cur.execute("""UPDATE surat_penerima SET dibaca=1, dibaca_at=CURRENT_TIMESTAMP
+        WHERE surat_id=%s AND user_id=%s""", (sid, uid))
+    cur.execute("""SELECT sp.*, u.nama as pembuat, u.jabatan as pembuat_jabatan
+        FROM surat_perintah sp JOIN users u ON sp.dibuat_oleh=u.id WHERE sp.id=%s""", (sid,))
+    surat = cur.fetchone()
+    cur.execute("""SELECT u.nama, u.jabatan, sp2.dibaca, sp2.dibaca_at
+        FROM surat_penerima sp2 JOIN users u ON sp2.user_id=u.id
+        WHERE sp2.surat_id=%s""", (sid,))
+    penerima = cur.fetchall()
+    conn.commit(); cur.close(); conn.close()
+    if not surat:
+        flash('Surat tidak ditemukan.', 'error')
+        return redirect(url_for('surat_user'))
+    return render_template('surat_detail.html', surat=surat, penerima=penerima)
+
+@app.route('/surat/<int:sid>/pdf')
+@login_required
+def surat_pdf(sid):
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT sp.*,u.nama as pembuat,u.jabatan as pembuat_jabatan
+        FROM surat_perintah sp JOIN users u ON sp.dibuat_oleh=u.id WHERE sp.id=%s""", (sid,))
+    surat = cur.fetchone()
+    cur.execute("""SELECT u.* FROM surat_penerima sp2
+        JOIN users u ON sp2.user_id=u.id WHERE sp2.surat_id=%s AND sp2.user_id=%s""", (sid, uid))
+    penerima_user = cur.fetchone()
+    cur.execute("SELECT * FROM settings WHERE id=1")
+    settings = cur.fetchone()
+    cur.close(); conn.close()
+    if not surat:
+        flash('Surat tidak ditemukan.', 'error')
+        return redirect(url_for('surat_user'))
+    # Generate PDF
+    buf = io.BytesIO()
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import PageBreak
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+    styles = getSampleStyleSheet()
+    instansi = settings['nama_perusahaan'] if settings else 'RS Slamet Riyadi'
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm,
+                            leftMargin=3*cm, rightMargin=2*cm)
+    elems = []
+    # Header
+    elems.append(Paragraph(f"<b>{instansi.upper()}</b>", ParagraphStyle('h',fontSize=14,alignment=TA_CENTER,spaceAfter=4)))
+    elems.append(Paragraph("Jl. Adisucipto No. 1, Surakarta", ParagraphStyle('sub',fontSize=10,alignment=TA_CENTER,spaceAfter=2)))
+    elems.append(Spacer(1, 0.3*cm))
+    from reportlab.platypus import HRFlowable
+    elems.append(HRFlowable(width="100%", thickness=2, color=colors.black))
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=colors.black, spaceAfter=10))
+    elems.append(Spacer(1, 0.3*cm))
+    elems.append(Paragraph(f"<b>{surat['judul'].upper()}</b>", ParagraphStyle('title',fontSize=13,alignment=TA_CENTER,spaceAfter=4)))
+    nomor = surat['nomor'] or f"SP/{sid}/{date.today().year}"
+    elems.append(Paragraph(f"Nomor: {nomor}", ParagraphStyle('nomor',fontSize=11,alignment=TA_CENTER,spaceAfter=16)))
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey, spaceAfter=12))
+    # Isi surat
+    isi = surat['isi']
+    if penerima_user:
+        isi = isi.replace('{{nama}}', penerima_user['nama'] or '')
+        isi = isi.replace('{{jabatan}}', penerima_user['jabatan'] or '')
+        isi = isi.replace('{{departemen}}', penerima_user['departemen'] or '')
+    isi = isi.replace('{{tanggal}}', str(surat['tanggal']))
+    for line in isi.split('\n'):
+        elems.append(Paragraph(line or '&nbsp;', ParagraphStyle('body',fontSize=11,leading=16,alignment=TA_JUSTIFY,spaceAfter=4)))
+    elems.append(Spacer(1, 1*cm))
+    # TTD
+    tgl = surat['tanggal'].strftime('%d %B %Y') if hasattr(surat['tanggal'], 'strftime') else str(surat['tanggal'])
+    ttd_data = [
+        ['', f'Surakarta, {tgl}'],
+        ['', f'{surat["pembuat_jabatan"] or "Pimpinan"}'],
+        ['', ''],['', ''],['', ''],
+        ['', f'<b>{surat["pembuat"]}</b>'],
+    ]
+    ttd_table = Table(ttd_data, colWidths=[10*cm, 7*cm])
+    ttd_table.setStyle(TableStyle([('FONTNAME',  (0,0), (-1,-1), 'Helvetica'),
+                                   ('FONTSIZE',  (0,0), (-1,-1), 11),
+                                   ('ALIGN',     (1,0), (1,-1), 'CENTER'),]))
+    elems.append(ttd_table)
+    doc.build(elems)
+    buf.seek(0)
+    return send_file(buf, mimetype='application/pdf',
+                     download_name=f"surat_{nomor.replace('/','_')}.pdf", as_attachment=False)
+
+# ── ADMIN SURAT ───────────────────────────────────────────────────────────────
+
+@app.route('/admin/surat')
+@admin_required
+def admin_surat():
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT sp.*, u.nama as pembuat,
+        (SELECT COUNT(*) FROM surat_penerima WHERE surat_id=sp.id) as total_penerima,
+        (SELECT COUNT(*) FROM surat_penerima WHERE surat_id=sp.id AND dibaca=1) as sudah_baca
+        FROM surat_perintah sp JOIN users u ON sp.dibuat_oleh=u.id
+        ORDER BY sp.created_at DESC""")
+    surat_list = cur.fetchall()
+    cur.execute("SELECT * FROM surat_template WHERE aktif=1 ORDER BY nama")
+    templates = cur.fetchall()
+    cur.execute("SELECT id,nama,jabatan,departemen FROM users WHERE role='user' AND status='active' ORDER BY nama")
+    users = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/surat.html', surat_list=surat_list, templates=templates, users=users)
+
+@app.route('/admin/surat/buat', methods=['POST'])
+@admin_required
+def admin_surat_buat():
+    conn = get_db(); cur = q(conn)
+    judul = request.form.get('judul','').strip()
+    isi = request.form.get('isi','').strip()
+    penerima_ids = request.form.getlist('penerima_ids')
+    template_id = request.form.get('template_id') or None
+    tanggal = request.form.get('tanggal', date.today().isoformat())
+    uid = session['user_id']
+    # Generate nomor
+    tahun = date.today().year
+    cur.execute("SELECT COUNT(*)+1 as n FROM surat_perintah WHERE EXTRACT(YEAR FROM tanggal)=%s", (tahun,))
+    n = cur.fetchone()['n']
+    nomor = f"SP/{n:03d}/{tahun}"
+    cur.execute("""INSERT INTO surat_perintah (nomor,template_id,judul,isi,dibuat_oleh,tanggal)
+        VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (nomor, template_id, judul, isi, uid, tanggal))
+    sid = cur.fetchone()['id']
+    for pid in penerima_ids:
+        cur.execute("INSERT INTO surat_penerima (surat_id,user_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+            (sid, int(pid)))
+        kirim_notif(conn, int(pid), '📋 Surat Perintah Baru',
+            f'Anda menerima surat perintah: {judul}', 'surat', sid, 'surat_perintah')
+    conn.commit(); cur.close(); conn.close()
+    flash(f'Surat {nomor} berhasil dibuat dan dikirim ke {len(penerima_ids)} penerima.', 'success')
+    return redirect(url_for('admin_surat'))
+
+@app.route('/admin/surat/<int:sid>')
+@admin_required
+def admin_surat_detail(sid):
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT sp.*,u.nama as pembuat,u.jabatan as pembuat_jabatan
+        FROM surat_perintah sp JOIN users u ON sp.dibuat_oleh=u.id WHERE sp.id=%s""", (sid,))
+    surat = cur.fetchone()
+    cur.execute("""SELECT u.nama,u.jabatan,u.departemen,sp2.dibaca,sp2.dibaca_at
+        FROM surat_penerima sp2 JOIN users u ON sp2.user_id=u.id
+        WHERE sp2.surat_id=%s ORDER BY u.nama""", (sid,))
+    penerima = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/surat_detail.html', surat=surat, penerima=penerima)
+
+@app.route('/admin/surat/template', methods=['POST'])
+@admin_required
+def admin_surat_template():
+    nama = request.form.get('nama','').strip()
+    konten = request.form.get('konten','').strip()
+    jenis = request.form.get('jenis', 'surat_perintah')
+    conn = get_db(); cur = q(conn)
+    cur.execute("INSERT INTO surat_template (nama,jenis,konten) VALUES (%s,%s,%s)", (nama, jenis, konten))
+    conn.commit(); cur.close(); conn.close()
+    flash('Template berhasil disimpan.', 'success')
+    return redirect(url_for('admin_surat'))
+
+@app.route('/api/surat-template/<int:tid>')
+@admin_required
+def api_surat_template(tid):
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM surat_template WHERE id=%s", (tid,))
+    t = cur.fetchone()
+    cur.close(); conn.close()
+    return jsonify(dict(t) if t else {})
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── NOTA DINAS ────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+APPROVAL_LEVELS = [
+    {'level': 1, 'label': 'Kepala TUUD'},
+    {'level': 2, 'label': 'Waka Rumkit'},
+    {'level': 3, 'label': 'Karumkit'},
+    {'level': 4, 'label': 'Pejabat Pengadaan'},
+]
+
+@app.route('/nota-dinas')
+@login_required
+def nota_dinas_user():
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT nd.*, u.nama as nama_pembuat,
+        (SELECT status FROM nota_approval WHERE nota_id=nd.id ORDER BY level LIMIT 1) as status_pertama
+        FROM nota_dinas nd JOIN users u ON nd.dari_user=u.id
+        WHERE nd.dari_user=%s ORDER BY nd.created_at DESC""", (uid,))
+    nota_list = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('nota_user.html', nota_list=nota_list)
+
+@app.route('/nota-dinas/buat', methods=['GET','POST'])
+@login_required
+def nota_dinas_buat():
+    uid = session['user_id']
+    if request.method == 'POST':
+        judul = request.form.get('judul','').strip()
+        perihal = request.form.get('perihal','').strip()
+        kepada = request.form.get('kepada','').strip()
+        isi = request.form.get('isi','').strip()
+        conn = get_db(); cur = q(conn)
+        # Nomor nota
+        tahun = date.today().year
+        cur.execute("SELECT COUNT(*)+1 as n FROM nota_dinas WHERE EXTRACT(YEAR FROM tanggal)=%s", (tahun,))
+        n = cur.fetchone()['n']
+        nomor = f"ND/{n:03d}/{tahun}"
+        # Lampiran
+        lampiran = None
+        f = request.files.get('lampiran')
+        if f and f.filename:
+            ext = f.filename.rsplit('.',1)[-1].lower()
+            if ext in ALLOWED_DOSIR:
+                os.makedirs(app.config['SURAT_FOLDER'], exist_ok=True)
+                fn = secure_filename(f"nd_{uid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+                f.save(os.path.join(app.config['SURAT_FOLDER'], fn))
+                lampiran = fn
+        cur.execute("""INSERT INTO nota_dinas (nomor,judul,perihal,kepada,isi,dari_user,lampiran)
+            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (nomor, judul, perihal, kepada, isi, uid, lampiran))
+        nid = cur.fetchone()['id']
+        # Buat approval chain
+        for lv in APPROVAL_LEVELS:
+            cur.execute("""INSERT INTO nota_approval (nota_id,level,role_label,status,urutan)
+                VALUES (%s,%s,%s,'pending',%s)""", (nid, lv['level'], lv['label'], lv['level']))
+        # Notif ke admin (level 1)
+        cur.execute("SELECT id FROM users WHERE role='admin' LIMIT 1")
+        admin = cur.fetchone()
+        if admin:
+            kirim_notif(conn, admin['id'], '📄 Nota Dinas Baru',
+                f'Nota dinas baru dari {session.get("nama","")}: {judul}', 'nota', nid, 'nota_dinas')
+        conn.commit(); cur.close(); conn.close()
+        flash(f'Nota Dinas {nomor} berhasil diajukan.', 'success')
+        return redirect(url_for('nota_dinas_user'))
+    return render_template('nota_buat.html')
+
+@app.route('/nota-dinas/<int:nid>')
+@login_required
+def nota_dinas_detail(nid):
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT nd.*,u.nama as nama_pembuat,u.jabatan as jabatan_pembuat,
+        u.departemen as dept_pembuat FROM nota_dinas nd
+        JOIN users u ON nd.dari_user=u.id WHERE nd.id=%s""", (nid,))
+    nota = cur.fetchone()
+    cur.execute("""SELECT na.*,u.nama as approver_nama FROM nota_approval na
+        LEFT JOIN users u ON na.user_id=u.id
+        WHERE na.nota_id=%s ORDER BY na.level""", (nid,))
+    approvals = cur.fetchall()
+    cur.close(); conn.close()
+    if not nota:
+        flash('Nota tidak ditemukan.', 'error')
+        return redirect(url_for('nota_dinas_user'))
+    return render_template('nota_detail.html', nota=nota, approvals=approvals, levels=APPROVAL_LEVELS)
+
+@app.route('/nota-dinas/<int:nid>/pdf')
+@login_required
+def nota_dinas_pdf(nid):
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT nd.*,u.nama as nama_pembuat,u.jabatan as jabatan_pembuat,
+        u.departemen as dept_pembuat FROM nota_dinas nd
+        JOIN users u ON nd.dari_user=u.id WHERE nd.id=%s""", (nid,))
+    nota = cur.fetchone()
+    cur.execute("""SELECT na.*,u.nama as approver_nama,u.jabatan as approver_jabatan
+        FROM nota_approval na LEFT JOIN users u ON na.user_id=u.id
+        WHERE na.nota_id=%s ORDER BY na.level""", (nid,))
+    approvals = cur.fetchall()
+    cur.execute("SELECT * FROM settings WHERE id=1")
+    settings = cur.fetchone()
+    cur.close(); conn.close()
+    instansi = settings['nama_perusahaan'] if settings else 'RS Slamet Riyadi'
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+    from reportlab.platypus import HRFlowable, Image as RLImage
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm,
+                            leftMargin=3*cm, rightMargin=2*cm)
+    elems = []
+    # Header
+    elems.append(Paragraph(f"<b>{instansi.upper()}</b>", ParagraphStyle('h',fontSize=14,alignment=TA_CENTER,spaceAfter=4)))
+    elems.append(HRFlowable(width="100%", thickness=2, color=colors.black))
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=colors.black, spaceAfter=8))
+    elems.append(Paragraph("<b>NOTA DINAS</b>", ParagraphStyle('t',fontSize=13,alignment=TA_CENTER,spaceAfter=10)))
+    # Info
+    tgl = nota['tanggal'].strftime('%d %B %Y') if hasattr(nota['tanggal'],'strftime') else str(nota['tanggal'])
+    info = [
+        ['Nomor', f": {nota['nomor'] or '-'}"],
+        ['Kepada', f": {nota['kepada'] or '-'}"],
+        ['Dari', f": {nota['nama_pembuat']} / {nota['jabatan_pembuat'] or '-'}"],
+        ['Perihal', f": {nota['perihal'] or nota['judul']}"],
+        ['Tanggal', f": {tgl}"],
+    ]
+    info_table = Table(info, colWidths=[3.5*cm, 12.5*cm])
+    info_table.setStyle(TableStyle([('FONTNAME',(0,0),(-1,-1),'Helvetica'),
+                                    ('FONTSIZE',(0,0),(-1,-1),11),
+                                    ('VALIGN',(0,0),(-1,-1),'TOP'),
+                                    ('BOTTOMPADDING',(0,0),(-1,-1),4)]))
+    elems.append(info_table)
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey, spaceBefore=8, spaceAfter=10))
+    # Isi
+    for line in (nota['isi'] or '').split('\n'):
+        elems.append(Paragraph(line or '&nbsp;', ParagraphStyle('body',fontSize=11,leading=16,
+            alignment=TA_JUSTIFY, spaceAfter=4)))
+    elems.append(Spacer(1, 1*cm))
+    # Kolom TTD berjenjang
+    elems.append(Paragraph("<b>Mengetahui / Menyetujui:</b>", ParagraphStyle('k',fontSize=11,spaceAfter=8)))
+    ttd_cols = []
+    for ap in approvals:
+        status_txt = '✓ Disetujui' if ap['status']=='approved' else ('✗ Ditolak' if ap['status']=='rejected' else 'Menunggu...')
+        ttd_cols.append(Paragraph(f"<b>{ap['role_label']}</b><br/><br/><br/><br/>{ap['approver_nama'] or '____________'}<br/><font size=9>{status_txt}</font>",
+            ParagraphStyle('ttd',fontSize=10,alignment=TA_CENTER)))
+    if ttd_cols:
+        w = 16/len(ttd_cols)
+        ttd_table = Table([ttd_cols], colWidths=[w*cm]*len(ttd_cols))
+        ttd_table.setStyle(TableStyle([('ALIGN',(0,0),(-1,-1),'CENTER'),
+                                        ('VALIGN',(0,0),(-1,-1),'TOP'),
+                                        ('BOX',(0,0),(-1,-1),0.5,colors.grey),
+                                        ('INNERGRID',(0,0),(-1,-1),0.5,colors.grey),
+                                        ('TOPPADDING',(0,0),(-1,-1),8),
+                                        ('BOTTOMPADDING',(0,0),(-1,-1),8)]))
+        elems.append(ttd_table)
+    doc.build(elems)
+    buf.seek(0)
+    nomor_clean = (nota['nomor'] or str(nid)).replace('/','_')
+    return send_file(buf, mimetype='application/pdf',
+                     download_name=f"nota_{nomor_clean}.pdf", as_attachment=False)
+
+# ── ADMIN NOTA DINAS ──────────────────────────────────────────────────────────
+
+@app.route('/admin/nota-dinas')
+@admin_required
+def admin_nota_dinas():
+    conn = get_db(); cur = q(conn)
+    status_f = request.args.get('status','')
+    q_sql = """SELECT nd.*,u.nama as nama_pembuat,
+        (SELECT COUNT(*) FROM nota_approval WHERE nota_id=nd.id AND status='approved') as approved_count,
+        (SELECT COUNT(*) FROM nota_approval WHERE nota_id=nd.id) as total_level
+        FROM nota_dinas nd JOIN users u ON nd.dari_user=u.id"""
+    params = []
+    if status_f:
+        q_sql += " WHERE nd.status=%s"; params.append(status_f)
+    q_sql += " ORDER BY nd.created_at DESC"
+    cur.execute(q_sql, params)
+    nota_list = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/nota_dinas.html', nota_list=nota_list, status_f=status_f)
+
+@app.route('/admin/nota-dinas/<int:nid>')
+@admin_required
+def admin_nota_detail(nid):
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT nd.*,u.nama as nama_pembuat,u.jabatan as jabatan_pembuat,
+        u.departemen as dept_pembuat FROM nota_dinas nd
+        JOIN users u ON nd.dari_user=u.id WHERE nd.id=%s""", (nid,))
+    nota = cur.fetchone()
+    cur.execute("""SELECT na.*,u.nama as approver_nama FROM nota_approval na
+        LEFT JOIN users u ON na.user_id=u.id
+        WHERE na.nota_id=%s ORDER BY na.level""", (nid,))
+    approvals = cur.fetchall()
+    cur.execute("SELECT id,nama,jabatan FROM users WHERE role='admin' OR role='approver' ORDER BY nama")
+    approvers = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/nota_detail.html', nota=nota, approvals=approvals,
+        approvers=approvers, levels=APPROVAL_LEVELS)
+
+@app.route('/admin/nota-dinas/<int:nid>/approve/<int:level>', methods=['POST'])
+@admin_required
+def admin_nota_approve(nid, level):
+    action = request.form.get('action','approve')
+    catatan = request.form.get('catatan','').strip()
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    # Upload TTD jika ada
+    ttd_file = None
+    f = request.files.get('ttd_file')
+    if f and f.filename:
+        ext = f.filename.rsplit('.',1)[-1].lower()
+        if ext in {'png','jpg','jpeg'}:
+            os.makedirs(app.config['TTD_FOLDER'], exist_ok=True)
+            fn = secure_filename(f"ttd_{uid}_{nid}_{level}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+            f.save(os.path.join(app.config['TTD_FOLDER'], fn))
+            ttd_file = fn
+    status = 'approved' if action == 'approve' else 'rejected'
+    if ttd_file:
+        cur.execute("""UPDATE nota_approval SET status=%s,user_id=%s,catatan=%s,ttd_file=%s,
+            approved_at=CURRENT_TIMESTAMP WHERE nota_id=%s AND level=%s""",
+            (status, uid, catatan, ttd_file, nid, level))
+    else:
+        cur.execute("""UPDATE nota_approval SET status=%s,user_id=%s,catatan=%s,
+            approved_at=CURRENT_TIMESTAMP WHERE nota_id=%s AND level=%s""",
+            (status, uid, catatan, nid, level))
+    # Cek apakah semua approved
+    cur.execute("SELECT * FROM nota_approval WHERE nota_id=%s ORDER BY level", (nid,))
+    all_ap = cur.fetchall()
+    all_done = all(a['status']=='approved' for a in all_ap)
+    any_rejected = any(a['status']=='rejected' for a in all_ap)
+    new_status = 'selesai' if all_done else ('ditolak' if any_rejected else 'proses')
+    cur.execute("UPDATE nota_dinas SET status=%s WHERE id=%s", (new_status, nid))
+    # Notif ke pembuat
+    cur.execute("SELECT dari_user,judul FROM nota_dinas WHERE id=%s", (nid,))
+    nd = cur.fetchone()
+    if nd:
+        label = APPROVAL_LEVELS[level-1]['label'] if level <= len(APPROVAL_LEVELS) else f'Level {level}'
+        msg = f'Nota Dinas Anda "{nd["judul"]}" telah {"disetujui" if status=="approved" else "ditolak"} oleh {label}'
+        kirim_notif(conn, nd['dari_user'], '📄 Update Nota Dinas', msg, 'nota', nid, 'nota_dinas')
+    conn.commit(); cur.close(); conn.close()
+    flash(f'Nota dinas berhasil {"disetujui" if status=="approved" else "ditolak"}.', 'success')
+    return redirect(url_for('admin_nota_detail', nid=nid))
+
+
+
+
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, host='0.0.0.0', port=5030)
+    app.run(debug=False, host='0.0.0.0', port=5030)

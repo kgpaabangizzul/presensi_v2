@@ -51,10 +51,10 @@
             <label class="block text-sm font-semibold text-slate-700 mb-1.5">Email *</label>
             <input type="email" name="email" value="{{ user.email }}" required class="input-field">
           </div>
-          <div>
+          <!-- <div>
             <label class="block text-sm font-semibold text-slate-700 mb-1.5">Password Baru <span class="text-slate-400 font-normal">(kosongkan jika tidak diubah)</span></label>
             <input type="password" name="password" placeholder="Isi untuk mengubah password" minlength="6" class="input-field">
-          </div>
+          </div> -->
           <div>
             <label class="block text-sm font-semibold text-slate-700 mb-1.5">Jabatan</label>
             <input type="text" name="jabatan" value="{{ user.jabatan or '' }}" placeholder="cth: Staff IT" class="input-field">
@@ -106,6 +106,14 @@
               <option value="rejected" {% if user.status=='rejected' %}selected{% endif %}>Nonaktif</option>
             </select>
           </div>
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5">Level Akses</label>
+            <select name="role" class="input-field">
+              <option value="user" {% if user.role=='user' %}selected{% endif %}>👤 User (Pegawai)</option>
+              <option value="admin" {% if user.role=='admin' %}selected{% endif %}>🛡️ Administrator</option>
+            </select>
+            <p class="text-xs text-slate-400 mt-1">⚠️ Administrator dapat mengakses seluruh panel admin.</p>
+          </div>
         </div>
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-1.5">Alamat</label>
@@ -127,6 +135,31 @@
           <a href="/admin/pegawai" class="border border-slate-200 text-slate-600 font-semibold px-6 py-2.5 rounded-xl hover:bg-slate-50 text-sm transition-colors">Batal</a>
         </div>
       </form>
+
+      <!-- Ubah Password Section -->
+      <div class="mt-6 pt-6 border-t border-slate-100">
+        <div class="flex items-center gap-2 mb-4">
+          <span style="font-size:18px">🔒</span>
+          <h3 class="text-base font-bold text-slate-700">Reset Password Pegawai</h3>
+        </div>
+        <form method="POST" action="/admin/pegawai/{{ user.id }}/ubah-password" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5">Password Baru <span class="text-red-400">*</span></label>
+            <input type="password" name="password_baru" required minlength="6" placeholder="Min. 6 karakter" class="input-field">
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5">Konfirmasi Password <span class="text-red-400">*</span></label>
+            <input type="password" name="password_konfirm" required minlength="6" placeholder="Ulangi password baru" class="input-field">
+          </div>
+          <div class="md:col-span-2">
+            <button type="submit"
+              style="background:#ef4444;color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;border:none;cursor:pointer;font-size:13px"
+              onclick="return confirm('Reset password pegawai ini?')">
+              🔑 Reset Password
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 </div>

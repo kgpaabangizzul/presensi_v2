@@ -55,10 +55,123 @@
         </div>
         <button type="submit" class="btn-primary" style="padding:14px;font-size:15px">Simpan Perubahan</button>
       </form>
+
+      <!-- Divider -->
+      <div style="height:1px;background:#e2e8f0;margin:24px 0"></div>
+
+      <!-- Ubah Password -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="font-size:14px;font-weight:700;color:#1e293b">🔑 Keamanan Akun</h3>
+        </div>
+
+        <form method="POST" action="{{ url_for('ubah_password') }}" id="formPassword" style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- Password Lama -->
+          <div>
+            <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Password Lama</label>
+            <div style="position:relative">
+              <input type="password" name="password_lama" id="pw_lama" required
+                class="input-field" placeholder="Masukkan password saat ini"
+                style="font-size:15px;padding-right:44px">
+              <button type="button" onclick="togglePw('pw_lama','ico_lama')"
+                style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;font-size:18px;line-height:1;color:#94a3b8" id="ico_lama">👁</button>
+            </div>
+          </div>
+
+          <!-- Password Baru -->
+          <div>
+            <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Password Baru</label>
+            <div style="position:relative">
+              <input type="password" name="password_baru" id="pw_baru" required minlength="6"
+                class="input-field" placeholder="Minimal 6 karakter"
+                style="font-size:15px;padding-right:44px" oninput="cekMatch()">
+              <button type="button" onclick="togglePw('pw_baru','ico_baru')"
+                style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;font-size:18px;line-height:1;color:#94a3b8" id="ico_baru">👁</button>
+            </div>
+            <!-- Strength indicator -->
+            <div style="margin-top:6px;display:flex;gap:4px" id="strengthBars">
+              <div id="sb1" style="height:3px;flex:1;border-radius:2px;background:#e2e8f0;transition:background .2s"></div>
+              <div id="sb2" style="height:3px;flex:1;border-radius:2px;background:#e2e8f0;transition:background .2s"></div>
+              <div id="sb3" style="height:3px;flex:1;border-radius:2px;background:#e2e8f0;transition:background .2s"></div>
+              <div id="sb4" style="height:3px;flex:1;border-radius:2px;background:#e2e8f0;transition:background .2s"></div>
+            </div>
+            <p id="strengthTxt" style="font-size:11px;color:#94a3b8;margin-top:3px"></p>
+          </div>
+
+          <!-- Konfirmasi -->
+          <div>
+            <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Konfirmasi Password Baru</label>
+            <div style="position:relative">
+              <input type="password" name="password_konfirm" id="pw_konfirm" required
+                class="input-field" placeholder="Ulangi password baru"
+                style="font-size:15px;padding-right:44px" oninput="cekMatch()">
+              <button type="button" onclick="togglePw('pw_konfirm','ico_konfirm')"
+                style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;font-size:18px;line-height:1;color:#94a3b8" id="ico_konfirm">👁</button>
+            </div>
+            <p id="matchMsg" style="font-size:12px;margin-top:5px;min-height:16px"></p>
+          </div>
+
+          <button type="submit" id="btnGantiPw" class="btn-primary"
+            style="padding:14px;font-size:15px;background:linear-gradient(135deg,#0f766e,#0d9488)">
+            Ganti Password
+          </button>
+        </form>
+      </div>
+
     </div>
   </div>
 </div>
+
 <script>
+// Preview foto
 function prvFoto(i){if(i.files&&i.files[0]){const r=new FileReader();r.onload=e=>{const el=document.getElementById('fotoPreview');if(el.tagName==='IMG'){el.src=e.target.result}else{const img=document.createElement('img');img.id='fotoPreview';img.style.cssText=el.style.cssText;img.src=e.target.result;el.replaceWith(img)}};r.readAsDataURL(i.files[0])}}
+
+// Toggle show/hide password
+function togglePw(inputId, icoId) {
+  var inp = document.getElementById(inputId);
+  var ico = document.getElementById(icoId);
+  if (inp.type === 'password') { inp.type = 'text'; ico.textContent = '🙈'; }
+  else { inp.type = 'password'; ico.textContent = '👁'; }
+}
+
+// Cek kekuatan password
+function cekStrength(pw) {
+  var score = 0;
+  if (pw.length >= 6)  score++;
+  if (pw.length >= 10) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+  return score;
+}
+
+// Real-time validasi
+function cekMatch() {
+  var baru    = document.getElementById('pw_baru').value;
+  var konfirm = document.getElementById('pw_konfirm').value;
+  var msg     = document.getElementById('matchMsg');
+  var btn     = document.getElementById('btnGantiPw');
+
+  // Strength bars
+  var score = cekStrength(baru);
+  var colors = ['#ef4444','#f97316','#eab308','#22c55e'];
+  var labels = ['Lemah','Cukup','Kuat','Sangat Kuat'];
+  for (var i = 1; i <= 4; i++) {
+    document.getElementById('sb'+i).style.background = i <= score ? colors[score-1] : '#e2e8f0';
+  }
+  document.getElementById('strengthTxt').textContent = baru.length >= 6 ? labels[score-1] || '' : '';
+
+  // Match check
+  if (!konfirm) { msg.textContent = ''; btn.disabled = false; btn.style.opacity = '1'; return; }
+  if (baru === konfirm) {
+    msg.textContent = '✓ Password cocok';
+    msg.style.color = '#16a34a';
+    btn.disabled = false; btn.style.opacity = '1';
+  } else {
+    msg.textContent = '✗ Password tidak cocok';
+    msg.style.color = '#dc2626';
+    btn.disabled = true; btn.style.opacity = '0.5';
+  }
+}
 </script>
 {% endblock %}

@@ -1,0 +1,73 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Review Nota Dinas{% endblock %}
+{% block content %}
+<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+  <a href="/admin/nota-dinas" style="font-size:13px;color:#3b82f6;text-decoration:none">← Kembali</a>
+  <a href="/nota-dinas/{{ nota.id }}/pdf" target="_blank"
+    style="background:#3b82f6;color:#fff;font-size:12px;font-weight:700;padding:8px 14px;border-radius:10px;text-decoration:none">📄 Download PDF</a>
+</div>
+{% with msgs = get_flashed_messages(with_categories=true) %}{% for cat,msg in msgs %}
+<div style="padding:12px 14px;border-radius:12px;margin-bottom:12px;font-size:13px;background:{{'#d1fae5' if cat=='success' else '#fee2e2'}};color:{{'#065f46' if cat=='success' else '#991b1b'}}">{{ msg }}</div>
+{% endfor %}{% endwith %}
+
+<!-- Info Nota -->
+<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);overflow:hidden;margin-bottom:14px">
+  <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px;color:#fff">
+    <span style="font-size:11px;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:99px">{{ nota.nomor or 'ND/-' }}</span>
+    <h2 style="font-size:16px;font-weight:800;margin:8px 0 4px">{{ nota.judul }}</h2>
+    <p style="font-size:12px;color:#bfdbfe">{{ nota.tanggal }} · {{ nota.nama_pembuat }} / {{ nota.jabatan_pembuat or '-' }}</p>
+    {% if nota.perihal %}<p style="font-size:12px;color:#93c5fd;margin-top:2px">Perihal: {{ nota.perihal }}</p>{% endif %}
+  </div>
+  <div style="padding:16px">
+    <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Kepada: {{ nota.kepada or '-' }}</p>
+    <div style="background:#f8fafc;border-radius:12px;padding:14px;font-size:13px;line-height:1.8;white-space:pre-line;color:#1e293b">{{ nota.isi }}</div>
+  </div>
+</div>
+
+<!-- Approval berjenjang -->
+<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:16px">
+  <p style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:14px">✍️ Persetujuan Berjenjang</p>
+  {% for ap in approvals %}
+  <div style="border:1.5px solid {{ '#86efac' if ap.status=='approved' else '#fca5a5' if ap.status=='rejected' else '#e2e8f0' }};border-radius:14px;padding:14px;margin-bottom:12px;
+    background:{{ '#f0fdf4' if ap.status=='approved' else '#fff1f2' if ap.status=='rejected' else '#f8fafc' }}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <p style="font-size:14px;font-weight:700;color:#1e293b">Level {{ ap.level }}: {{ ap.role_label }}</p>
+        {% if ap.approver_nama %}<p style="font-size:12px;color:#64748b;margin-top:2px">Oleh: {{ ap.approver_nama }}</p>{% endif %}
+        {% if ap.approved_at %}<p style="font-size:11px;color:#94a3b8;margin-top:2px">{{ ap.approved_at.strftime('%d %b %Y %H:%M') }}</p>{% endif %}
+        {% if ap.catatan %}<p style="font-size:12px;color:#64748b;margin-top:4px;font-style:italic">{{ ap.catatan }}</p>{% endif %}
+        {% if ap.ttd_file %}
+        <div style="margin-top:8px">
+          <p style="font-size:11px;color:#374151;font-weight:600;margin-bottom:4px">Tanda Tangan:</p>
+          <img src="/static/uploads/ttd/{{ ap.ttd_file }}" style="height:60px;border:1px solid #e2e8f0;border-radius:8px;padding:4px;background:#fff">
+        </div>
+        {% endif %}
+      </div>
+      {% if ap.status=='approved' %}<span style="background:#d1fae5;color:#065f46;padding:4px 12px;border-radius:99px;font-size:12px;font-weight:700;flex-shrink:0">✓ Disetujui</span>
+      {% elif ap.status=='rejected' %}<span style="background:#fee2e2;color:#991b1b;padding:4px 12px;border-radius:99px;font-size:12px;font-weight:700;flex-shrink:0">✗ Ditolak</span>
+      {% else %}<span style="background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:99px;font-size:12px;font-weight:700;flex-shrink:0">⏳ Menunggu</span>{% endif %}
+    </div>
+    {% if ap.status == 'pending' %}
+    <form method="POST" action="/admin/nota-dinas/{{ nota.id }}/approve/{{ ap.level }}" enctype="multipart/form-data"
+      style="display:flex;flex-direction:column;gap:8px;border-top:1px solid #e2e8f0;padding-top:10px">
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px">Catatan (opsional)</label>
+        <input type="text" name="catatan" style="width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:#374151;margin-bottom:4px">Upload Tanda Tangan (PNG/JPG, opsional)</label>
+        <input type="file" name="ttd_file" accept=".png,.jpg,.jpeg"
+          style="width:100%;padding:7px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:12px;background:#fff;box-sizing:border-box">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="submit" name="action" value="approve"
+          style="flex:1;background:#10b981;color:#fff;font-weight:700;padding:10px;border-radius:10px;border:none;cursor:pointer;font-size:13px">✓ Setujui</button>
+        <button type="submit" name="action" value="reject"
+          style="flex:1;background:#ef4444;color:#fff;font-weight:700;padding:10px;border-radius:10px;border:none;cursor:pointer;font-size:13px">✗ Tolak</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
