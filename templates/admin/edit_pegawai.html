@@ -31,7 +31,10 @@
         </div>
         <div class="pb-2">
           <p class="text-xl font-bold text-slate-800">{{ user.nama }}</p>
-          <p class="text-slate-400 text-sm">{{ user.jabatan or '-' }} • NIK: {{ user.nik }}</p>
+          <p class="text-slate-400 text-sm">
+            {{ user.jabatan or '-' }} • NIK: {{ user.nik }}
+            {% if user.nip %} • NIP/NRP: {{ user.nip }}{% endif %}
+          </p>
         </div>
       </div>
 
@@ -46,6 +49,12 @@
           <div>
             <label class="block text-sm font-semibold text-slate-700 mb-1.5">Nama Lengkap *</label>
             <input type="text" name="nama" value="{{ user.nama }}" required class="input-field">
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5">NIP / NRP
+              <span class="text-xs font-normal text-slate-400">(opsional)</span>
+            </label>
+            <input type="text" name="nip" value="{{ user.nip or '' }}" placeholder="Nomor Induk Pegawai/Prajurit" class="input-field">
           </div>
           <div>
             <label class="block text-sm font-semibold text-slate-700 mb-1.5">Email *</label>
@@ -107,12 +116,18 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm font-semibold text-slate-700 mb-1.5">Level Akses</label>
+            <label class="block text-sm font-semibold text-slate-700 mb-1.5">Role / Hak Akses</label>
             <select name="role" class="input-field">
-              <option value="user" {% if user.role=='user' %}selected{% endif %}>👤 User (Pegawai)</option>
-              <option value="admin" {% if user.role=='admin' %}selected{% endif %}>🛡️ Administrator</option>
+              {% for r in roles %}
+              <option value="{{ r.kode }}" {% if user.role == r.kode %}selected{% endif %}>
+                {% if r.kode == 'admin' %}🛡️{% elif r.kode == 'user' %}👤{% else %}👥{% endif %}
+                {{ r.nama }}
+              </option>
+              {% endfor %}
             </select>
-            <p class="text-xs text-slate-400 mt-1">⚠️ Administrator dapat mengakses seluruh panel admin.</p>
+            <p class="text-xs text-slate-400 mt-1">⚠️ Role <b>Administrator</b> dapat mengakses seluruh panel admin.
+              <a href="/admin/master-role" class="text-blue-500 hover:underline ml-1">Kelola role →</a>
+            </p>
           </div>
         </div>
         <div>

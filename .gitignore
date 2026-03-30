@@ -4,6 +4,12 @@ static/uploads/photos/*
 !static/uploads/photos/.gitkeep
 static/uploads/dosir/*
 !static/uploads/dosir/.gitkeep
+static/uploads/photos/*
+!static/uploads/photos/.gitkeep
+static/uploads/ttd/*
+!static/uploads/ttd/.gitkeep
+static/uploads/surat/*
+!static/uploads/surat/.gitkeep
 
 # Python
 __pycache__/

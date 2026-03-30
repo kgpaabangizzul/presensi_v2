@@ -1,0 +1,529 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Master Role Pegawai{% endblock %}
+{% block content %}
+
+<style>
+/* ── Drag & Drop Card ─────────────────────────────────────────────────────── */
+.role-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 13px 15px;
+  transition: box-shadow .18s, border-color .18s, opacity .15s, transform .15s;
+  position: relative;
+}
+.role-card:hover          { border-color: #6366f1; box-shadow: 0 3px 14px rgba(99,102,241,.1); }
+.role-card.inactive       { opacity: .6; background: #fafafa; }
+.role-card.is-dragging    { opacity: .4; transform: scale(.98); box-shadow: 0 8px 28px rgba(99,102,241,.22); }
+.role-card.drag-over-top  { border-top: 3px solid #6366f1 !important; }
+.role-card.drag-over-bot  { border-bottom: 3px solid #6366f1 !important; }
+
+.drag-handle {
+  cursor: grab;
+  color: #cbd5e1;
+  font-size: 18px;
+  flex-shrink: 0;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color .15s;
+  user-select: none;
+}
+.drag-handle:hover  { color: #6366f1; }
+.drag-handle:active { cursor: grabbing; }
+
+/* ── Avatar badge ─────────────────────────────────────────────────────────── */
+.role-avatar {
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 800;
+  flex-shrink: 0;
+  user-select: none;
+}
+.av-admin    { background:#fee2e2; color:#991b1b; }
+.av-user     { background:#dbeafe; color:#1d4ed8; }
+.av-manajer  { background:#fce7f3; color:#9d174d; }
+.av-dokter   { background:#d1fae5; color:#065f46; }
+.av-perawat  { background:#e0e7ff; color:#3730a3; }
+.av-apoteker { background:#fef3c7; color:#92400e; }
+.av-bidan    { background:#fdf4ff; color:#86198f; }
+.av-teknisi  { background:#f1f5f9; color:#475569; }
+.av-security { background:#fff7ed; color:#9a3412; }
+.av-staf     { background:#f0fdf4; color:#166534; }
+.av-default  { background:#f5f3ff; color:#5b21b6; }
+
+/* ── Info ─────────────────────────────────────────────────────────────────── */
+.role-info           { flex: 1; min-width: 0; }
+.r-nama   { font-weight: 700; font-size: 14px; color: #0f172a; }
+.r-meta   { display: flex; align-items: center; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+.r-desc   { font-size: 11.5px; color: #94a3b8; margin-top: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+.chip {
+  font-size: 11px; border-radius: 20px; padding: 2px 8px;
+  font-weight: 600; white-space: nowrap; display: inline-block;
+}
+.chip-kode   { background:#1e293b; color:#e2e8f0; font-family:monospace; }
+.chip-user   { background:#eff6ff; color:#1d4ed8; }
+.chip-off    { background:#fee2e2; color:#991b1b; }
+.chip-locked { background:#fef9c3; color:#92400e; }
+
+/* ── Actions ──────────────────────────────────────────────────────────────── */
+.role-actions { display: flex; gap: 5px; flex-shrink: 0; }
+.btn-act {
+  width: 32px; height: 32px; border-radius: 8px; border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 14px;
+  transition: background .15s, transform .1s;
+}
+.btn-act:active    { transform: scale(.88); }
+.btn-act.edit      { background:#eff6ff; color:#2563eb; }
+.btn-act.edit:hover     { background:#dbeafe; }
+.btn-act.toggle    { background:#f0fdf4; color:#16a34a; }
+.btn-act.toggle:hover   { background:#dcfce7; }
+.btn-act.toggle.off     { background:#fff1f2; color:#e11d48; }
+.btn-act.toggle.off:hover { background:#ffe4e6; }
+.btn-act.del       { background:#fff1f2; color:#e11d48; }
+.btn-act.del:hover      { background:#ffe4e6; }
+
+/* ── Save bar ─────────────────────────────────────────────────────────────── */
+#save-bar {
+  display: none; align-items: center; gap: 10px;
+  background: #fffbeb; border: 1.5px solid #fbbf24; border-radius: 12px;
+  padding: 10px 16px; margin-bottom: 14px;
+  font-size: 13px; color: #78350f; font-weight: 500;
+  animation: slideDown .2s ease;
+}
+#save-bar.show { display: flex; }
+@keyframes slideDown { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+.m-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,.45); backdrop-filter: blur(3px);
+  align-items: center; justify-content: center; padding: 16px;
+}
+.m-overlay.open { display: flex; }
+.m-box {
+  background: #fff; border-radius: 18px; padding: 26px;
+  width: 100%; max-width: 460px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.18);
+  animation: popIn .2s cubic-bezier(.34,1.56,.64,1);
+  position: relative;
+}
+.m-box.sm { max-width: 380px; text-align: center; }
+@keyframes popIn { from{opacity:0;transform:scale(.93)} to{opacity:1;transform:scale(1)} }
+.m-title { font-size: 17px; font-weight: 700; color: #0f172a; margin: 0 0 18px; }
+.m-close {
+  position: absolute; top: 14px; right: 14px;
+  background: #f1f5f9; border: none; border-radius: 8px;
+  width: 28px; height: 28px; font-size: 13px; cursor: pointer; color: #64748b;
+}
+.m-close:hover { background: #e2e8f0; }
+
+/* ── Form fields ──────────────────────────────────────────────────────────── */
+.f-group { margin-bottom: 13px; }
+.f-group label { display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:5px; }
+.f-group input, .f-group select {
+  width: 100%; border: 1.5px solid #e2e8f0; border-radius: 9px;
+  padding: 9px 11px; font-size: 13.5px; outline: none; box-sizing: border-box; color: #0f172a;
+  transition: border-color .15s, box-shadow .15s;
+}
+.f-group input:focus, .f-group select:focus {
+  border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+}
+.f-group .hint { font-size: 11px; color: #94a3b8; margin-top: 3px; display: block; }
+.f-group .f-ro { background:#f8fafc; color:#94a3b8; cursor:not-allowed; }
+.f-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.m-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+.btn-save { background:#6366f1; color:#fff; border:none; border-radius:9px; padding:9px 22px; font-weight:600; font-size:13.5px; cursor:pointer; transition:background .15s; }
+.btn-save:hover   { background:#4f46e5; }
+.btn-cancel { background:#f1f5f9; color:#475569; border:none; border-radius:9px; padding:9px 16px; font-weight:600; font-size:13.5px; cursor:pointer; }
+.btn-cancel:hover { background:#e2e8f0; }
+.btn-del { background:#fee2e2; color:#b91c1c; border:none; border-radius:9px; padding:9px 18px; font-weight:600; font-size:13.5px; cursor:pointer; }
+.btn-del:hover { background:#fecaca; }
+
+/* ── Spinner ──────────────────────────────────────────────────────────────── */
+.spin { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:sp .6s linear infinite; margin-right:5px; vertical-align:middle; }
+@keyframes sp { to{transform:rotate(360deg)} }
+</style>
+
+<div class="max-w-3xl">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+    <div>
+      <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin:0">⚙️ Manajemen Role</h2>
+      <p style="font-size:12.5px;color:#64748b;margin:3px 0 0">Kelola role pengguna sistem — seret kartu untuk mengubah urutan tampil</p>
+    </div>
+    <button onclick="openModal('modalTambah')"
+      style="background:#6366f1;color:#fff;border:none;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer">
+      ＋ Tambah Role
+    </button>
+  </div>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat, msg in messages %}
+    <div style="border-radius:10px;padding:11px 15px;margin-bottom:12px;font-size:13px;font-weight:500;
+      background:{{ '#f0fdf4' if cat=='success' else '#fff1f2' if cat=='error' else '#fffbeb' }};
+      color:{{ '#166534' if cat=='success' else '#9f1239' if cat=='error' else '#78350f' }};
+      border:1.5px solid {{ '#bbf7d0' if cat=='success' else '#fecdd3' if cat=='error' else '#fde68a' }}">
+      {{ '✅' if cat=='success' else '❌' if cat=='error' else '⚠️' }} {{ msg }}
+    </div>
+    {% endfor %}{% endif %}
+  {% endwith %}
+
+  <!-- Save order bar -->
+  <div id="save-bar">
+    <span style="flex:1">✏️ Urutan berubah — simpan agar perubahan tersimpan ke database.</span>
+    <button onclick="saveOrder()" id="btnSave" class="btn-save" style="padding:7px 16px;font-size:12.5px">
+      💾 Simpan Urutan
+    </button>
+    <button onclick="cancelOrder()" class="btn-cancel" style="padding:7px 12px;font-size:12.5px">
+      Batal
+    </button>
+  </div>
+
+  <!-- Role list card -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #f1f5f9">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-weight:700;color:#0f172a;font-size:14px">Daftar Role</span>
+        <span style="background:#6366f1;color:#fff;border-radius:20px;font-size:11px;padding:2px 9px;font-weight:700">{{ roles|length }}</span>
+      </div>
+      <span style="font-size:11.5px;color:#94a3b8">⠿ Seret untuk mengurutkan</span>
+    </div>
+
+    <div style="padding:14px;display:flex;flex-direction:column;gap:8px" id="roleList">
+      {% for r in roles %}
+      {% set av = 'av-' ~ r.kode if r.kode in ['admin','user','manajer','dokter','perawat','apoteker','bidan','teknisi','security','staf'] else 'av-default' %}
+      <div class="role-card{% if not r.aktif %} inactive{% endif %}"
+           data-id="{{ r.id }}"
+           draggable="true">
+
+        <span class="drag-handle" title="Seret untuk mengurutkan">⠿</span>
+
+        <div class="role-avatar {{ av }}">{{ r.nama[0]|upper }}</div>
+
+        <div class="role-info">
+          <div class="r-nama">{{ r.nama }}</div>
+          <div class="r-meta">
+            <span class="chip chip-kode">{{ r.kode }}</span>
+            <span class="chip chip-user">👤 {{ r.jml_user }} pegawai</span>
+            {% if not r.aktif %}<span class="chip chip-off">Nonaktif</span>{% endif %}
+            {% if r.kode in ['admin','user'] %}<span class="chip chip-locked">🔒 Sistem</span>{% endif %}
+          </div>
+          {% if r.deskripsi %}<div class="r-desc">{{ r.deskripsi }}</div>{% endif %}
+        </div>
+
+        <div class="role-actions">
+          <button class="btn-act edit" title="Edit role"
+            onclick="openEdit({{ r.id }},'{{ r.kode }}','{{ r.nama|replace("'","\\'") }}','{{ (r.deskripsi or '')|replace("'","\\'") }}',{{ r.urutan }},{{ r.aktif }})">
+            ✏️
+          </button>
+          <button class="btn-act toggle{% if not r.aktif %} off{% endif %}"
+            title="{{ 'Nonaktifkan' if r.aktif else 'Aktifkan' }}"
+            onclick="openToggle({{ r.id }},'{{ r.nama|replace("'","\\'") }}',{{ r.aktif }},'{{ (r.deskripsi or '')|replace("'","\\'") }}',{{ r.urutan }})">
+            {{ '🟢' if r.aktif else '⚫' }}
+          </button>
+          {% if r.kode not in ['admin','user'] %}
+          <button class="btn-act del" title="Hapus role"
+            onclick="openHapus({{ r.id }},'{{ r.nama|replace("'","\\'") }}',{{ r.jml_user }})">
+            🗑️
+          </button>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div style="text-align:center;padding:40px 20px;color:#94a3b8">
+        <div style="font-size:40px;margin-bottom:10px">📋</div>
+        <p style="font-weight:600;margin:0">Belum ada role</p>
+        <p style="font-size:12px;margin:4px 0 0">Klik Tambah Role untuk memulai</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div><!-- /max-w-3xl -->
+
+
+<!-- ── MODAL: TAMBAH ──────────────────────────────────────────────────────── -->
+<div class="m-overlay" id="modalTambah" onclick="bgClose(event,'modalTambah')">
+  <div class="m-box">
+    <button class="m-close" onclick="closeModal('modalTambah')">✕</button>
+    <p class="m-title">➕ Tambah Role Baru</p>
+    <form method="POST" action="{{ url_for('admin_master_role') }}">
+      <input type="hidden" name="aksi" value="tambah">
+      <div class="f-grid">
+        <div class="f-group">
+          <label>Kode Role <span style="color:#f43f5e">*</span></label>
+          <input type="text" name="kode" required placeholder="mis. supervisor"
+                 pattern="[a-zA-Z0-9_]+" title="Hanya huruf, angka, dan underscore">
+          <span class="hint">Huruf kecil, gunakan _ untuk spasi. Contoh: <code>staff_it</code></span>
+        </div>
+        <div class="f-group">
+          <label>Nama Role <span style="color:#f43f5e">*</span></label>
+          <input type="text" name="nama" required placeholder="mis. Supervisor">
+        </div>
+      </div>
+      <div class="f-group">
+        <label>Deskripsi</label>
+        <input type="text" name="deskripsi" placeholder="Keterangan singkat tentang role ini…">
+      </div>
+      <div class="f-group">
+        <label>Urutan Tampil</label>
+        <input type="number" name="urutan" value="99" min="0">
+        <span class="hint">Angka kecil = tampil lebih atas. Bisa diatur ulang lewat drag &amp; drop.</span>
+      </div>
+      <div class="m-footer">
+        <button type="button" class="btn-cancel" onclick="closeModal('modalTambah')">Batal</button>
+        <button type="submit" class="btn-save">💾 Simpan Role</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ── MODAL: EDIT ────────────────────────────────────────────────────────── -->
+<div class="m-overlay" id="modalEdit" onclick="bgClose(event,'modalEdit')">
+  <div class="m-box">
+    <button class="m-close" onclick="closeModal('modalEdit')">✕</button>
+    <p class="m-title">✏️ Edit Role</p>
+    <form method="POST" action="{{ url_for('admin_master_role') }}">
+      <input type="hidden" name="aksi" value="edit">
+      <input type="hidden" name="id" id="eId">
+      <div class="f-group">
+        <label>Kode Role</label>
+        <input type="text" id="eKode" class="f-ro" readonly>
+        <span class="hint">Kode tidak dapat diubah setelah dibuat.</span>
+      </div>
+      <div class="f-group">
+        <label>Nama Role <span style="color:#f43f5e">*</span></label>
+        <input type="text" name="nama" id="eNama" required>
+      </div>
+      <div class="f-group">
+        <label>Deskripsi</label>
+        <input type="text" name="deskripsi" id="eDesk" placeholder="Keterangan singkat…">
+      </div>
+      <div class="f-grid">
+        <div class="f-group">
+          <label>Urutan</label>
+          <input type="number" name="urutan" id="eUrutan" min="0">
+        </div>
+        <div class="f-group">
+          <label>Status</label>
+          <select name="aktif" id="eAktif">
+            <option value="1">✅ Aktif</option>
+            <option value="0">⛔ Nonaktif</option>
+          </select>
+        </div>
+      </div>
+      <div class="m-footer">
+        <button type="button" class="btn-cancel" onclick="closeModal('modalEdit')">Batal</button>
+        <button type="submit" class="btn-save">💾 Simpan Perubahan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ── MODAL: TOGGLE AKTIF ────────────────────────────────────────────────── -->
+<div class="m-overlay" id="modalToggle" onclick="bgClose(event,'modalToggle')">
+  <div class="m-box sm">
+    <button class="m-close" onclick="closeModal('modalToggle')">✕</button>
+    <div id="tIcon" style="font-size:44px;margin-bottom:10px">🟢</div>
+    <p class="m-title" id="tTitle"></p>
+    <p id="tText" style="font-size:13px;color:#64748b;margin:0 0 4px"></p>
+    <form method="POST" action="{{ url_for('admin_master_role') }}" id="formToggle">
+      <input type="hidden" name="aksi" value="edit">
+      <input type="hidden" name="id"       id="tId">
+      <input type="hidden" name="nama"     id="tNama">
+      <input type="hidden" name="deskripsi" id="tDesk">
+      <input type="hidden" name="urutan"   id="tUrut">
+      <input type="hidden" name="aktif"    id="tAktif">
+      <div class="m-footer" style="justify-content:center">
+        <button type="button" class="btn-cancel" onclick="closeModal('modalToggle')">Batal</button>
+        <button type="submit" class="btn-save" id="tBtn">Ya, Ubah</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ── MODAL: HAPUS ───────────────────────────────────────────────────────── -->
+<div class="m-overlay" id="modalHapus" onclick="bgClose(event,'modalHapus')">
+  <div class="m-box sm">
+    <button class="m-close" onclick="closeModal('modalHapus')">✕</button>
+    <div style="font-size:44px;margin-bottom:10px">🗑️</div>
+    <p class="m-title">Hapus Role?</p>
+    <p id="hText" style="font-size:13px;color:#64748b;margin:0 0 4px"></p>
+    <form method="POST" action="{{ url_for('admin_master_role') }}" id="formHapus">
+      <input type="hidden" name="aksi" value="hapus">
+      <input type="hidden" name="id" id="hId">
+      <div class="m-footer" style="justify-content:center">
+        <button type="button" class="btn-cancel" onclick="closeModal('modalHapus')">Batal</button>
+        <button type="submit" class="btn-del">Ya, Hapus Permanen</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ── SCRIPTS ────────────────────────────────────────────────────────────── -->
+<script>
+/* ── Modal helpers ─────────────────────────────────────────────────────── */
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function bgClose(e, id) { if (e.target.id === id) closeModal(id); }
+
+function openEdit(id, kode, nama, desk, urutan, aktif) {
+  document.getElementById('eId').value     = id;
+  document.getElementById('eKode').value   = kode;
+  document.getElementById('eNama').value   = nama;
+  document.getElementById('eDesk').value   = desk;
+  document.getElementById('eUrutan').value = urutan;
+  document.getElementById('eAktif').value  = aktif;
+  openModal('modalEdit');
+}
+
+function openToggle(id, nama, aktif, desk, urutan) {
+  const willBe = aktif ? 0 : 1;
+  document.getElementById('tId').value    = id;
+  document.getElementById('tNama').value  = nama;
+  document.getElementById('tDesk').value  = desk;
+  document.getElementById('tUrut').value  = urutan;
+  document.getElementById('tAktif').value = willBe;
+  document.getElementById('tIcon').textContent  = aktif ? '⛔' : '✅';
+  document.getElementById('tTitle').textContent = aktif ? 'Nonaktifkan Role' : 'Aktifkan Role';
+  document.getElementById('tText').textContent  = aktif
+    ? `Role "${nama}" akan dinonaktifkan. Pegawai dengan role ini tidak bisa login.`
+    : `Role "${nama}" akan diaktifkan kembali.`;
+  document.getElementById('tBtn').textContent = aktif ? '⛔ Ya, Nonaktifkan' : '✅ Ya, Aktifkan';
+  openModal('modalToggle');
+}
+
+function openHapus(id, nama, jmlUser) {
+  if (jmlUser > 0) {
+    // Tampilkan info saja tanpa hapus
+    document.getElementById('hId').value  = id;
+    document.getElementById('hText').textContent =
+      `⚠️ Role "${nama}" masih digunakan oleh ${jmlUser} pegawai dan tidak bisa dihapus.`;
+    document.querySelector('#formHapus button[type=submit]').style.display = 'none';
+    openModal('modalHapus');
+    return;
+  }
+  document.getElementById('hId').value  = id;
+  document.getElementById('hText').textContent =
+    `Role "${nama}" akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.`;
+  document.querySelector('#formHapus button[type=submit]').style.display = '';
+  openModal('modalHapus');
+}
+
+/* ── Drag & Drop ───────────────────────────────────────────────────────── */
+const list = document.getElementById('roleList');
+let dragged = null;
+let origOrder = [];
+let changed = false;
+
+function snapOrder() {
+  origOrder = [...list.querySelectorAll('.role-card')].map(c => c.dataset.id);
+}
+snapOrder();
+
+function bindDrag() {
+  list.querySelectorAll('.role-card').forEach(card => {
+    card.addEventListener('dragstart', function(e) {
+      dragged = this;
+      this.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', function() {
+      this.classList.remove('is-dragging');
+      list.querySelectorAll('.role-card').forEach(c =>
+        c.classList.remove('drag-over-top','drag-over-bot'));
+      dragged = null;
+      checkChanged();
+    });
+    card.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      if (!dragged || this === dragged) return;
+      const mid = this.getBoundingClientRect().top + this.getBoundingClientRect().height / 2;
+      this.classList.remove('drag-over-top','drag-over-bot');
+      this.classList.add(e.clientY < mid ? 'drag-over-top' : 'drag-over-bot');
+    });
+    card.addEventListener('dragleave', function() {
+      this.classList.remove('drag-over-top','drag-over-bot');
+    });
+    card.addEventListener('drop', function(e) {
+      e.preventDefault();
+      if (!dragged || this === dragged) return;
+      this.classList.remove('drag-over-top','drag-over-bot');
+      const mid = this.getBoundingClientRect().top + this.getBoundingClientRect().height / 2;
+      list.insertBefore(dragged, e.clientY < mid ? this : this.nextSibling);
+    });
+  });
+}
+bindDrag();
+
+function checkChanged() {
+  const cur = [...list.querySelectorAll('.role-card')].map(c => c.dataset.id);
+  changed = JSON.stringify(cur) !== JSON.stringify(origOrder);
+  document.getElementById('save-bar').classList.toggle('show', changed);
+}
+
+function cancelOrder() {
+  origOrder.forEach(id => {
+    const c = list.querySelector(`[data-id="${id}"]`);
+    if (c) list.appendChild(c);
+  });
+  changed = false;
+  document.getElementById('save-bar').classList.remove('show');
+}
+
+function saveOrder() {
+  const ids = [...list.querySelectorAll('.role-card')].map(c => parseInt(c.dataset.id));
+  const btn = document.getElementById('btnSave');
+  btn.innerHTML = '<span class="spin"></span>Menyimpan…';
+  btn.disabled = true;
+
+  fetch('{{ url_for("admin_master_role_reorder") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order: ids })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      snapOrder();
+      changed = false;
+      document.getElementById('save-bar').classList.remove('show');
+      toast('✅ Urutan berhasil disimpan!', 'success');
+    } else {
+      toast('❌ Gagal: ' + (data.error || 'Terjadi kesalahan'), 'error');
+    }
+  })
+  .catch(() => toast('❌ Koneksi gagal, silakan coba lagi.', 'error'))
+  .finally(() => { btn.innerHTML = '💾 Simpan Urutan'; btn.disabled = false; });
+}
+
+/* ── Toast ─────────────────────────────────────────────────────────────── */
+function toast(msg, type) {
+  const el = document.createElement('div');
+  const ok = type === 'success';
+  el.style.cssText = `position:fixed;bottom:22px;right:22px;z-index:99999;
+    background:${ok?'#f0fdf4':'#fff1f2'};color:${ok?'#166534':'#9f1239'};
+    border:1.5px solid ${ok?'#bbf7d0':'#fecdd3'};border-radius:12px;
+    padding:11px 18px;font-size:13.5px;font-weight:600;
+    box-shadow:0 8px 24px rgba(0,0,0,.1);animation:slideDown .22s ease`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+</script>
+
+{% endblock %}

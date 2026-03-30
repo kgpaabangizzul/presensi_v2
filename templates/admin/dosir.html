@@ -14,18 +14,22 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th{background:#f8fafc;padding:10px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0}
 td{padding:10px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
 tr:hover td{background:#fafafa}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;align-items:center;justify-content:center}
-.modal-box{background:#fff;border-radius:20px;padding:24px;width:90%;max-width:460px;max-height:90vh;overflow-y:auto}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;align-items:flex-end;justify-content:center}
+.modal-box{background:#fff;border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:100%;max-height:92vh;overflow-y:auto}
+@media(min-width:640px){
+  .modal-overlay{align-items:center;justify-content:center}
+  .modal-box{border-radius:20px;max-width:460px;max-height:90vh}
+}
 </style>
 
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px">
   <div>
     <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0">📁 Kelola E-Dosir</h2>
     <p style="font-size:12px;color:#64748b;margin-top:2px">Atur jenis dokumen yang perlu diupload pegawai</p>
   </div>
-  <div style="display:flex;gap:8px">
-    <a href="/admin/dosir/files" style="background:#6366f1;color:#fff;font-weight:700;padding:10px 16px;border-radius:10px;text-decoration:none;font-size:13px">📋 Lihat Semua File</a>
-    <button onclick="openAdd()" class="btn-primary">+ Tambah Jenis Dokumen</button>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="/admin/dosir/files" style="background:#6366f1;color:#fff;font-weight:700;padding:10px 14px;border-radius:10px;text-decoration:none;font-size:13px;white-space:nowrap">📋 Lihat File</a>
+    <button onclick="openAdd()" class="btn-primary" style="white-space:nowrap">+ Tambah</button>
   </div>
 </div>
 
@@ -40,21 +44,21 @@ tr:hover td{background:#fafafa}
 {% endwith %}
 
 <!-- Stats -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
-  <div class="card" style="padding:14px;text-align:center">
-    <p style="font-size:28px;font-weight:800;color:#3b82f6">{{ jenis_list|length }}</p>
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px">
+  <div class="card" style="padding:14px;text-align:center;margin-bottom:0">
+    <p style="font-size:26px;font-weight:800;color:#3b82f6">{{ jenis_list|length }}</p>
     <p style="font-size:11px;color:#64748b">Total Jenis Dokumen</p>
   </div>
-  <div class="card" style="padding:14px;text-align:center">
-    <p style="font-size:28px;font-weight:800;color:#1d4ed8">{{ jenis_list|selectattr('wajib','equalto',1)|list|length }}</p>
+  <div class="card" style="padding:14px;text-align:center;margin-bottom:0">
+    <p style="font-size:26px;font-weight:800;color:#1d4ed8">{{ jenis_list|selectattr('wajib','equalto',1)|list|length }}</p>
     <p style="font-size:11px;color:#64748b">Wajib</p>
   </div>
-  <div class="card" style="padding:14px;text-align:center">
-    <p style="font-size:28px;font-weight:800;color:#64748b">{{ jenis_list|selectattr('wajib','equalto',0)|list|length }}</p>
+  <div class="card" style="padding:14px;text-align:center;margin-bottom:0">
+    <p style="font-size:26px;font-weight:800;color:#64748b">{{ jenis_list|selectattr('wajib','equalto',0)|list|length }}</p>
     <p style="font-size:11px;color:#64748b">Opsional</p>
   </div>
-  <div class="card" style="padding:14px;text-align:center">
-    <p style="font-size:28px;font-weight:800;color:#10b981">{{ stats.values()|sum(attribute='verified') }}</p>
+  <div class="card" style="padding:14px;text-align:center;margin-bottom:0">
+    <p style="font-size:26px;font-weight:800;color:#10b981">{{ stats.values()|sum(attribute='verified') }}</p>
     <p style="font-size:11px;color:#64748b">File Terverifikasi</p>
   </div>
 </div>
@@ -73,32 +77,51 @@ tr:hover td{background:#fafafa}
   </div>
   {% else %}
 
-  <!-- Mobile cards -->
+  <!-- Mobile cards — improved -->
   <div class="sm:hidden">
     {% for j in jenis_list %}
     {% set s = stats.get(j.id, {}) %}
     <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-            <span style="font-weight:700;color:#1e293b;font-size:14px">{{ j.nama }}</span>
+
+      <!-- Baris atas: nama + aksi -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+            <span style="font-weight:700;color:#1e293b;font-size:14px;line-height:1.3">{{ j.nama }}</span>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
             {% if j.wajib %}<span class="badge-w">WAJIB</span>{% else %}<span class="badge-o">Opsional</span>{% endif %}
+            <span style="font-size:10px;color:#94a3b8">{{ j.dept_nama or 'Semua Dept' }}</span>
           </div>
-          <p style="font-size:11px;color:#64748b">Dept: {{ j.dept_nama or 'Semua Departemen' }}</p>
-          {% if j.deskripsi %}<p style="font-size:11px;color:#94a3b8;margin-top:2px">{{ j.deskripsi }}</p>{% endif %}
-          <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap">
-            <span style="font-size:11px;color:#10b981">✓ {{ s.get('verified',0) }} Verified</span>
-            <span style="font-size:11px;color:#f59e0b">⏳ {{ s.get('pending',0) }} Pending</span>
-            <span style="font-size:11px;color:#ef4444">✗ {{ s.get('rejected',0) }} Ditolak</span>
-          </div>
+          {% if j.deskripsi %}
+          <p style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4">{{ j.deskripsi }}</p>
+          {% endif %}
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;gap:5px;flex-shrink:0">
           <button onclick="openEdit({{ j.id }},'{{ j.nama|e }}','{{ j.deskripsi|e }}',{{ j.wajib }},{{ j.departemen_id or 'null' }},{{ j.urutan }})"
-            class="btn-edit">✏️</button>
-          <form method="POST" action="/admin/dosir/jenis/hapus/{{ j.id }}" onsubmit="return confirm('Hapus jenis dokumen ini?')">
-            <button type="submit" class="btn-danger">🗑</button>
+            style="width:34px;height:34px;background:#fef3c7;color:#92400e;border:none;border-radius:9px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">✏️</button>
+          <form method="POST" action="/admin/dosir/jenis/hapus/{{ j.id }}" onsubmit="return confirm('Hapus jenis dokumen ini?')" style="margin:0">
+            <button type="submit"
+              style="width:34px;height:34px;background:#fee2e2;color:#991b1b;border:none;border-radius:9px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">🗑</button>
           </form>
         </div>
+      </div>
+
+      <!-- Stats pill row -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#f0fdf4;color:#166534;padding:4px 10px;border-radius:20px">
+          <svg style="width:11px;height:11px" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          {{ s.get('verified',0) }} Verified
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#fffbeb;color:#92400e;padding:4px 10px;border-radius:20px">
+          <svg style="width:11px;height:11px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M12 6v6l4 2"/></svg>
+          {{ s.get('pending',0) }} Pending
+        </span>
+        {% if s.get('rejected',0) > 0 %}
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#fff1f2;color:#9f1239;padding:4px 10px;border-radius:20px">
+          ✗ {{ s.get('rejected',0) }} Ditolak
+        </span>
+        {% endif %}
       </div>
     </div>
     {% endfor %}
@@ -155,6 +178,8 @@ tr:hover td{background:#fafafa}
 <!-- Modal Tambah -->
 <div id="modalAdd" class="modal-overlay" onclick="closeAdd()">
   <div class="modal-box" onclick="event.stopPropagation()">
+    <!-- Handle bar mobile -->
+    <div class="sm:hidden" style="width:40px;height:4px;background:#e2e8f0;border-radius:99px;margin:0 auto 16px"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">+ Tambah Jenis Dokumen</h3>
       <button onclick="closeAdd()" style="background:#f1f5f9;border:none;border-radius:99px;width:30px;height:30px;cursor:pointer;font-size:14px">✕</button>
@@ -200,6 +225,8 @@ tr:hover td{background:#fafafa}
 <!-- Modal Edit -->
 <div id="modalEdit" class="modal-overlay" onclick="closeEdit()">
   <div class="modal-box" onclick="event.stopPropagation()">
+    <!-- Handle bar mobile -->
+    <div class="sm:hidden" style="width:40px;height:4px;background:#e2e8f0;border-radius:99px;margin:0 auto 16px"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">✏️ Edit Jenis Dokumen</h3>
       <button onclick="closeEdit()" style="background:#f1f5f9;border:none;border-radius:99px;width:30px;height:30px;cursor:pointer;font-size:14px">✕</button>

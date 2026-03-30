@@ -1,0 +1,79 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Konfigurasi Level Approval Nota Dinas{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+
+  <!-- Tambah Level Baru -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-5">
+    <h3 class="font-bold text-slate-800 mb-4">➕ Tambah Level Approval</h3>
+    <form method="POST" class="flex gap-3">
+      <input type="hidden" name="aksi" value="tambah">
+      <input type="text" name="label" placeholder="Contoh: Direktur Utama" required
+        class="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+      <button type="submit"
+        style="background:#3b82f6;color:#fff;border:none;padding:10px 20px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer">
+        Tambah
+      </button>
+    </form>
+    <p class="text-xs text-slate-400 mt-2">Level akan ditambahkan secara otomatis di urutan terakhir.</p>
+  </div>
+
+  <!-- Daftar Level -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+    <h3 class="font-bold text-slate-800 mb-4">📋 Daftar Level Approval</h3>
+    {% if config_list %}
+    <div class="space-y-3">
+      {% for c in config_list %}
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"
+           class="{{ 'opacity-50' if not c.aktif }}">
+        <!-- Badge level -->
+        <span style="background:#eff6ff;color:#1d4ed8;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;min-width:60px;text-align:center">
+          Level {{ c.level }}
+        </span>
+
+        <!-- Edit label inline -->
+        <form method="POST" style="flex:1;display:flex;gap:8px;align-items:center">
+          <input type="hidden" name="aksi" value="edit">
+          <input type="hidden" name="id" value="{{ c.id }}">
+          <input type="text" name="label" value="{{ c.label }}" required
+            style="flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:13px;min-width:140px">
+          <button type="submit"
+            style="background:#f1f5f9;color:#475569;border:none;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+            Simpan
+          </button>
+        </form>
+
+        <!-- Toggle aktif -->
+        <form method="POST">
+          <input type="hidden" name="aksi" value="toggle">
+          <input type="hidden" name="id" value="{{ c.id }}">
+          <button type="submit"
+            style="background:{{ '#dcfce7' if c.aktif else '#f1f5f9' }};color:{{ '#15803d' if c.aktif else '#64748b' }};border:none;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+            {{ '✓ Aktif' if c.aktif else '✗ Nonaktif' }}
+          </button>
+        </form>
+
+        <!-- Hapus -->
+        <form method="POST" onsubmit="return confirm('Hapus level {{ c.label }}?')">
+          <input type="hidden" name="aksi" value="hapus">
+          <input type="hidden" name="id" value="{{ c.id }}">
+          <button type="submit"
+            style="background:#fee2e2;color:#991b1b;border:none;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+            🗑
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-slate-400 text-sm">Belum ada level approval. Tambahkan di atas.</p>
+    {% endif %}
+  </div>
+
+  <div class="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+    <p class="text-sm font-semibold text-amber-800 mb-1">⚠️ Perhatian</p>
+    <p class="text-xs text-amber-700">Perubahan level hanya berlaku untuk nota dinas yang <b>baru dibuat</b>. Nota yang sudah ada tidak terpengaruh.</p>
+  </div>
+
+</div>
+{% endblock %}

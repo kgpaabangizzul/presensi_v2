@@ -1,0 +1,448 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Hak Akses Role{% endblock %}
+{% block content %}
+
+<style>
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+.perm-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ── Matrix table ─────────────────────────────────────────────────────────── */
+.perm-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 13px;
+}
+
+/* Sticky kolom pertama (nama modul) */
+.perm-table .col-modul {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: #fff;
+  min-width: 200px;
+  max-width: 220px;
+}
+.perm-table thead .col-modul { background: #f8fafc; z-index: 4; }
+
+/* Header role */
+.perm-table thead th {
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
+  padding: 0;
+  text-align: center;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.th-role-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 10px 10px;
+  min-width: 90px;
+}
+.th-role-avatar {
+  width: 34px; height: 34px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800;
+}
+.th-role-nama { font-size: 11.5px; font-weight: 700; color: #0f172a; }
+.th-role-kode { font-size: 10px; color: #94a3b8; font-family: monospace; }
+.th-role-actions { display: flex; gap: 4px; }
+.btn-preset {
+  font-size: 10px; padding: 2px 7px; border: none; border-radius: 5px;
+  cursor: pointer; font-weight: 600; transition: background .12s;
+}
+.btn-all  { background: #dcfce7; color: #166534; }
+.btn-all:hover  { background: #bbf7d0; }
+.btn-none { background: #fee2e2; color: #991b1b; }
+.btn-none:hover { background: #fecaca; }
+
+/* Grup header row */
+.row-grup td {
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  padding: 7px 14px;
+  border-top: 1px solid #e2e8f0;
+  position: sticky;
+  left: 0;
+}
+
+/* Body rows */
+.perm-table tbody tr:not(.row-grup):hover td { background: #fafafa; }
+.perm-table tbody tr:not(.row-grup):hover td.col-modul { background: #f8fafc; }
+
+.td-modul {
+  padding: 9px 14px;
+  color: #334155;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+}
+
+.td-check {
+  text-align: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+/* Toggle switch */
+.toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.toggle-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-track {
+  position: absolute; inset: 0;
+  background: #cbd5e1;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background .2s;
+}
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  left: 3px; top: 3px;
+  width: 16px; height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.toggle-switch input:checked + .toggle-track { background: #22c55e; }
+.toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
+/* Admin role = dikunci */
+.toggle-switch.locked .toggle-track { background: #6366f1; cursor: not-allowed; }
+.toggle-switch.locked .toggle-track::after { transform: translateX(16px); }
+
+/* Saving indicator */
+.saving-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #fbbf24;
+  display: none;
+  animation: pulse .8s ease infinite alternate;
+}
+.saving-dot.show { display: inline-block; }
+@keyframes pulse { from{opacity:.4} to{opacity:1} }
+
+/* ── Legend ────────────────────────────────────────────────────────────────── */
+.legend { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font-size: 12px; color: #64748b; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+/* ── Avatar colors ─────────────────────────────────────────────────────────── */
+.av-admin    { background:#fee2e2; color:#991b1b; }
+.av-user     { background:#dbeafe; color:#1d4ed8; }
+.av-manajer  { background:#fce7f3; color:#9d174d; }
+.av-dokter   { background:#d1fae5; color:#065f46; }
+.av-perawat  { background:#e0e7ff; color:#3730a3; }
+.av-apoteker { background:#fef3c7; color:#92400e; }
+.av-bidan    { background:#fdf4ff; color:#86198f; }
+.av-teknisi  { background:#f1f5f9; color:#475569; }
+.av-security { background:#fff7ed; color:#9a3412; }
+.av-staf     { background:#f0fdf4; color:#166534; }
+.av-default  { background:#f5f3ff; color:#5b21b6; }
+
+/* ── Save bar ──────────────────────────────────────────────────────────────── */
+#save-bar {
+  display: none; position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  background: #fff; border: 1.5px solid #e2e8f0; border-radius: 14px;
+  padding: 14px 20px; box-shadow: 0 8px 32px rgba(0,0,0,.12);
+  align-items: center; gap: 12px; font-size: 13px; color: #334155;
+  animation: fadeUp .22s ease;
+}
+#save-bar.show { display: flex; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+.btn-save-fixed { background:#22c55e; color:#fff; border:none; border-radius:9px; padding:9px 20px; font-weight:700; font-size:13px; cursor:pointer; transition:background .15s; }
+.btn-save-fixed:hover { background:#16a34a; }
+.btn-discard { background:#f1f5f9; color:#475569; border:none; border-radius:9px; padding:9px 14px; font-weight:600; font-size:13px; cursor:pointer; }
+
+/* ── Toast ─────────────────────────────────────────────────────────────────── */
+#toast {
+  display:none; position:fixed; top:20px; right:20px; z-index:99999;
+  border-radius:12px; padding:11px 18px; font-size:13px; font-weight:600;
+  box-shadow:0 6px 20px rgba(0,0,0,.1); animation:slideDown .22s ease;
+}
+@keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+</style>
+
+<div>
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+    <div>
+      <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin:0">🔐 Hak Akses per Role</h2>
+      <p style="font-size:12.5px;color:#64748b;margin:3px 0 0">
+        Atur modul apa yang dapat diakses oleh setiap role. Perubahan langsung tersimpan otomatis.
+      </p>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:#22c55e"></span> Diizinkan</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#cbd5e1"></span> Ditolak</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#6366f1"></span> Admin (selalu aktif)</span>
+      <span id="saving-indicator" style="display:none;align-items:center;gap:5px;font-size:12px;color:#f59e0b">
+        <span class="saving-dot show"></span> Menyimpan…
+      </span>
+    </div>
+  </div>
+
+  <!-- Flash -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat, msg in messages %}
+    <div style="border-radius:10px;padding:11px 15px;margin-bottom:14px;font-size:13px;font-weight:500;
+      background:{{ '#f0fdf4' if cat=='success' else '#fff1f2' }};
+      color:{{ '#166534' if cat=='success' else '#9f1239' }};
+      border:1.5px solid {{ '#bbf7d0' if cat=='success' else '#fecdd3' }}">
+      {{ '✅' if cat=='success' else '❌' }} {{ msg }}
+    </div>
+    {% endfor %}{% endif %}
+  {% endwith %}
+
+  <!-- Matrix card -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+
+    <!-- Toolbar -->
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap">
+      <span style="font-weight:700;color:#0f172a;font-size:14px">Matrix Hak Akses</span>
+      <span style="background:#6366f1;color:#fff;border-radius:20px;font-size:11px;padding:2px 9px;font-weight:700">
+        {{ roles|length }} role
+      </span>
+      <span style="background:#f1f5f9;color:#64748b;border-radius:20px;font-size:11px;padding:2px 9px;font-weight:600;margin-right:auto">
+        {% set total = namespace(n=0) %}{% for g,mm in grups.items() %}{% set total.n = total.n + mm|length %}{% endfor %}
+        {{ total.n }} modul
+      </span>
+      <!-- Search filter -->
+      <input type="text" id="searchModul" placeholder="🔍 Cari modul…"
+        oninput="filterModul(this.value)"
+        style="border:1.5px solid #e2e8f0;border-radius:8px;padding:7px 11px;font-size:12.5px;outline:none;width:180px">
+    </div>
+
+    <!-- Scrollable matrix -->
+    <div class="perm-wrap" style="max-height:72vh;overflow-y:auto">
+      <table class="perm-table" id="permTable">
+        <thead>
+          <tr>
+            <th class="col-modul" style="padding:12px 14px;text-align:left">
+              <span style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Modul / Fitur</span>
+            </th>
+            {% for r in roles %}
+            {% set av = 'av-' ~ r.kode if r.kode in ['admin','user','manajer','dokter','perawat','apoteker','bidan','teknisi','security','staf'] else 'av-default' %}
+            <th>
+              <div class="th-role-inner">
+                <div class="th-role-avatar {{ av }}">{{ r.nama[0]|upper }}</div>
+                <div class="th-role-nama">{{ r.nama }}</div>
+                <div class="th-role-kode">{{ r.kode }}</div>
+                {% if r.kode != 'admin' %}
+                <div class="th-role-actions">
+                  <button class="btn-preset btn-all"
+                    onclick="presetRole('{{ r.kode }}','all')" title="Aktifkan semua">✓ Semua</button>
+                  <button class="btn-preset btn-none"
+                    onclick="presetRole('{{ r.kode }}','none')" title="Nonaktifkan semua">✗ Hapus</button>
+                </div>
+                {% else %}
+                <div style="font-size:10px;color:#6366f1;font-weight:600;margin-top:2px">🔒 Full Access</div>
+                {% endif %}
+              </div>
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for grup_nama, modul_list in grups.items() %}
+          <!-- Grup separator -->
+          <tr class="row-grup" data-grup="{{ grup_nama }}">
+            <td colspan="{{ roles|length + 1 }}">{{ grup_nama }}</td>
+          </tr>
+          {% for m in modul_list %}
+          <tr class="row-modul" data-modul="{{ m.modul_kode }}" data-nama="{{ m.modul_nama|lower }}">
+            <!-- Nama modul -->
+            <td class="td-modul col-modul">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span>{{ m.modul_nama }}</span>
+                <code style="font-size:10px;background:#f1f5f9;color:#64748b;padding:1px 6px;border-radius:4px">{{ m.modul_kode }}</code>
+              </div>
+            </td>
+            <!-- Toggle per role -->
+            {% for r in roles %}
+            {% set is_admin = r.kode == 'admin' %}
+            {% set checked = perm_map.get(r.kode, {}).get(m.modul_kode, 0) %}
+            <td class="td-check">
+              <div class="toggle-wrap">
+                <label class="toggle-switch {% if is_admin %}locked{% endif %}">
+                  <input type="checkbox"
+                    {% if is_admin or checked %}checked{% endif %}
+                    {% if is_admin %}disabled{% endif %}
+                    data-role="{{ r.kode }}"
+                    data-modul="{{ m.modul_kode }}"
+                    onchange="togglePerm(this)">
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Bottom info -->
+    <div style="padding:12px 18px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <span style="font-size:12px;color:#94a3b8">
+        💡 Perubahan disimpan otomatis saat toggle diklik. Refresh halaman untuk melihat perubahan terbaru.
+      </span>
+      <span id="last-saved" style="font-size:11.5px;color:#22c55e;font-weight:600"></span>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Save bar (muncul jika ada perubahan yang belum tersimpan / error) -->
+<div id="save-bar">
+  <span>⚠️ Beberapa perubahan gagal disimpan</span>
+  <button onclick="retryFailed()" class="btn-save-fixed">🔄 Coba Lagi</button>
+  <button onclick="document.getElementById('save-bar').classList.remove('show')" class="btn-discard">Tutup</button>
+</div>
+
+
+<script>
+/* ── Toggle satu permission via AJAX ───────────────────────────────────── */
+const failed = [];
+
+function togglePerm(input) {
+  const roleKode  = input.dataset.role;
+  const modulKode = input.dataset.modul;
+  const aktif     = input.checked ? 1 : 0;
+
+  showSaving(true);
+
+  fetch('{{ url_for("admin_role_permission_api") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role_kode: roleKode, modul_kode: modulKode, aktif: aktif })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      showLastSaved();
+      toast(`${aktif ? '✅' : '⛔'} ${modulKode} → ${roleKode}`, aktif ? 'success' : 'off');
+    } else {
+      input.checked = !input.checked;  // rollback UI
+      toast('❌ Gagal menyimpan: ' + (data.error || ''), 'error');
+      document.getElementById('save-bar').classList.add('show');
+    }
+  })
+  .catch(() => {
+    input.checked = !input.checked;
+    toast('❌ Koneksi gagal', 'error');
+    document.getElementById('save-bar').classList.add('show');
+  })
+  .finally(() => showSaving(false));
+}
+
+/* ── Preset: aktifkan/nonaktifkan semua modul satu role ────────────────── */
+function presetRole(roleKode, mode) {
+  const label = mode === 'all' ? 'mengaktifkan SEMUA' : 'menonaktifkan SEMUA';
+  if (!confirm(`Yakin ingin ${label} modul untuk role "${roleKode}"?`)) return;
+
+  showSaving(true);
+  fetch(`{{ url_for("admin_role_permission_preset", role_kode="ROLE_PLACEHOLDER") }}`.replace('ROLE_PLACEHOLDER', roleKode), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: mode })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      // Update UI semua toggle untuk role ini
+      document.querySelectorAll(`input[data-role="${roleKode}"]`).forEach(inp => {
+        if (!inp.disabled) inp.checked = (mode === 'all');
+      });
+      showLastSaved();
+      toast(`${mode === 'all' ? '✅ Semua diaktifkan' : '⛔ Semua dinonaktifkan'} untuk role "${roleKode}"`, mode === 'all' ? 'success' : 'off');
+    } else {
+      toast('❌ Gagal: ' + (data.error || ''), 'error');
+    }
+  })
+  .catch(() => toast('❌ Koneksi gagal', 'error'))
+  .finally(() => showSaving(false));
+}
+
+/* ── Search / filter modul ─────────────────────────────────────────────── */
+function filterModul(q) {
+  q = q.toLowerCase().trim();
+  const rows = document.querySelectorAll('#permTable .row-modul');
+  const grups = document.querySelectorAll('#permTable .row-grup');
+
+  rows.forEach(row => {
+    const nama = row.dataset.nama || '';
+    const kode = row.dataset.modul || '';
+    row.style.display = (!q || nama.includes(q) || kode.includes(q)) ? '' : 'none';
+  });
+
+  // Sembunyikan grup jika semua modulnya tersembunyi
+  grups.forEach(grupRow => {
+    const grupNama = grupRow.dataset.grup;
+    let hasVisible = false;
+    rows.forEach(row => {
+      // Cek apakah row ini termasuk grup ini (lewat DOM traversal)
+      let sibling = grupRow.nextElementSibling;
+      while (sibling && !sibling.classList.contains('row-grup')) {
+        if (sibling === row && row.style.display !== 'none') { hasVisible = true; }
+        sibling = sibling.nextElementSibling;
+      }
+    });
+    grupRow.style.display = (!q || hasVisible) ? '' : 'none';
+  });
+}
+
+/* ── UI helpers ─────────────────────────────────────────────────────────── */
+function showSaving(on) {
+  document.getElementById('saving-indicator').style.display = on ? 'flex' : 'none';
+}
+
+function showLastSaved() {
+  const el = document.getElementById('last-saved');
+  const now = new Date().toLocaleTimeString('id-ID');
+  el.textContent = `✓ Disimpan ${now}`;
+}
+
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  const ok = type === 'success';
+  const off = type === 'off';
+  el.style.background = ok ? '#f0fdf4' : off ? '#fafafa' : '#fff1f2';
+  el.style.color       = ok ? '#166534' : off ? '#475569' : '#9f1239';
+  el.style.border      = `1.5px solid ${ok ? '#bbf7d0' : off ? '#e2e8f0' : '#fecdd3'}`;
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.style.display = 'none', 2500);
+}
+
+function retryFailed() {
+  document.getElementById('save-bar').classList.remove('show');
+  toast('Klik ulang toggle yang ingin diubah untuk mencoba lagi.', 'off');
+}
+</script>
+
+{% endblock %}

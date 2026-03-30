@@ -1,0 +1,133 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Template Format Nota Dinas{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+
+  <!-- Form Tambah Template Baru -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-5">
+    <h3 class="font-bold text-slate-800 mb-4">➕ Buat Template Baru</h3>
+    <form method="POST" class="space-y-4">
+      <input type="hidden" name="aksi" value="tambah">
+
+      <div>
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Nama Template</label>
+        <input type="text" name="nama" placeholder="Contoh: Format RS Slamet Riyadi" required
+          style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-size:13px;box-sizing:border-box">
+      </div>
+
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Ukuran Font (pt)</label>
+          <input type="number" name="font_size" value="11" min="8" max="16"
+            style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Margin Atas (cm)</label>
+          <input type="number" name="margin_top" value="2.0" step="0.5" min="1" max="5"
+            style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Margin Kiri (cm)</label>
+          <input type="number" name="margin_left" value="3.0" step="0.5" min="1" max="5"
+            style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5">
+          Header Kustom
+          <span class="font-normal text-slate-400 text-xs ml-1">(kosongkan = pakai nama instansi dari Settings)</span>
+        </label>
+        <textarea name="header" rows="3" placeholder="Contoh:&#10;RUMAH SAKIT TK. IV 09.07.01 SLAMET RIYADI&#10;Jl. Adisucipto No. 41, Surakarta"
+          style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+        <p class="text-xs text-slate-400 mt-1">Setiap baris baru = baris baru di PDF. Teks akan ditampilkan di tengah (center).</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5">
+          Footer Kustom
+          <span class="font-normal text-slate-400 text-xs ml-1">(opsional)</span>
+        </label>
+        <textarea name="footer" rows="2" placeholder="Contoh:&#10;Dokumen ini diterbitkan secara elektronik dan sah tanpa tanda tangan basah."
+          style="width:100%;border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+      </div>
+
+      <div>
+        <button type="submit"
+          style="background:#3b82f6;color:#fff;border:none;padding:10px 28px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer">
+          Simpan & Aktifkan Template
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Daftar Template -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+    <h3 class="font-bold text-slate-800 mb-4">📄 Daftar Template</h3>
+    {% if tmpl_list %}
+    <div class="space-y-4">
+      {% for t in tmpl_list %}
+      <div style="border:1.5px solid {{ '#3b82f6' if t.aktif else '#e2e8f0' }};border-radius:14px;padding:16px;background:{{ '#eff6ff' if t.aktif else '#fff' }}">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <span style="font-size:14px;font-weight:700;color:#1e293b">{{ t.nama }}</span>
+          {% if t.aktif %}
+          <span style="background:#16a34a;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700">✓ AKTIF</span>
+          {% endif %}
+          <span style="background:#f1f5f9;color:#64748b;border-radius:8px;padding:2px 8px;font-size:11px">
+            Font {{ t.font_size }}pt | Margin atas {{ t.margin_top }}cm | kiri {{ t.margin_left }}cm
+          </span>
+        </div>
+
+        {% if t.header %}
+        <div style="background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+          <p style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px">HEADER:</p>
+          <pre style="font-size:12px;color:#334155;margin:0;white-space:pre-wrap;font-family:inherit">{{ t.header }}</pre>
+        </div>
+        {% else %}
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:8px">Header: <i>otomatis dari nama instansi (Settings)</i></p>
+        {% endif %}
+
+        {% if t.footer %}
+        <div style="background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:10px">
+          <p style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px">FOOTER:</p>
+          <pre style="font-size:12px;color:#334155;margin:0;white-space:pre-wrap;font-family:inherit">{{ t.footer }}</pre>
+        </div>
+        {% endif %}
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          {% if not t.aktif %}
+          <form method="POST">
+            <input type="hidden" name="aksi" value="aktifkan">
+            <input type="hidden" name="id" value="{{ t.id }}">
+            <button type="submit"
+              style="background:#dcfce7;color:#15803d;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+              ✓ Aktifkan
+            </button>
+          </form>
+          <form method="POST" onsubmit="return confirm('Hapus template {{ t.nama }}?')">
+            <input type="hidden" name="aksi" value="hapus">
+            <input type="hidden" name="id" value="{{ t.id }}">
+            <button type="submit"
+              style="background:#fee2e2;color:#991b1b;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+              🗑 Hapus
+            </button>
+          </form>
+          {% else %}
+          <span style="font-size:12px;color:#15803d;font-weight:600;padding:6px 0">Template ini sedang digunakan untuk semua PDF nota dinas.</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-slate-400 text-sm">Belum ada template.</p>
+    {% endif %}
+  </div>
+
+  <div class="mt-4 bg-blue-50 border border-blue-100 rounded-2xl p-4">
+    <p class="text-sm font-semibold text-blue-800 mb-1">💡 Tips</p>
+    <p class="text-xs text-blue-700">Hanya satu template yang aktif setiap saat. Template yang aktif digunakan untuk semua download PDF nota dinas. Untuk kop surat resmi, isi Header dengan nama instansi, alamat, dan nomor telepon.</p>
+  </div>
+
+</div>
+{% endblock %}

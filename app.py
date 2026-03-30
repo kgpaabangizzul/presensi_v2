@@ -171,6 +171,43 @@ def init_db():
 
     cur.execute("INSERT INTO settings (id, nama_perusahaan) VALUES (1, 'PT. Absensi Digital') ON CONFLICT DO NOTHING")
 
+    # ── MASTER ROLE ───────────────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS master_role (
+            id SERIAL PRIMARY KEY,
+            kode TEXT UNIQUE NOT NULL,
+            nama TEXT NOT NULL,
+            deskripsi TEXT,
+            aktif INTEGER DEFAULT 1,
+            urutan INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    # Seed default roles
+    default_roles = [
+        ('admin',    'Administrator',  'Akses penuh ke semua fitur', 0),
+        ('user',     'Pegawai',        'Akses standar pegawai',      1),
+        ('manajer',  'Manajer',        'Akses laporan dan approval', 2),
+        ('dokter',   'Dokter',         'Tenaga medis dokter',        3),
+        ('perawat',  'Perawat',        'Tenaga medis perawat',       4),
+        ('apoteker', 'Apoteker',       'Tenaga farmasi',             5),
+        ('bidan',    'Bidan',          'Tenaga kebidanan',           6),
+        ('teknisi',  'Teknisi',        'Teknisi dan IT',             7),
+        ('security', 'Security',       'Petugas keamanan',           8),
+        ('staf',     'Staf Admin',     'Staf administrasi',          9),
+    ]
+    for kode, nama, desk, urut in default_roles:
+        cur.execute("""INSERT INTO master_role (kode,nama,deskripsi,urutan)
+            VALUES (%s,%s,%s,%s) ON CONFLICT (kode) DO NOTHING""",
+            (kode, nama, desk, urut))
+
+    # ── KOLOM NIP DI USERS ────────────────────────────────────────────────────
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS nip TEXT")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     # ── SURAT PERINTAH & NOTA DINAS ───────────────────────────────────────────
     cur.execute("""
         CREATE TABLE IF NOT EXISTS surat_template (
@@ -220,6 +257,13 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Tambah kolom dasar jika belum ada
+    try:
+        cur.execute("ALTER TABLE nota_dinas ADD COLUMN IF NOT EXISTS dasar TEXT")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS nota_approval (
             id SERIAL PRIMARY KEY,
@@ -420,6 +464,120 @@ Dilaksanakan mulai tanggal {{tanggal}} s.d. selesai.')
     except Exception:
         pass
 
+    # ── Tabel konfigurasi level approval nota dinas ───────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS approval_config (
+            id SERIAL PRIMARY KEY,
+            level INTEGER UNIQUE NOT NULL,
+            label TEXT NOT NULL,
+            aktif INTEGER DEFAULT 1,
+            urutan INTEGER DEFAULT 0
+        )
+    """)
+    # Seed default jika belum ada
+    cur.execute("SELECT COUNT(*) FROM approval_config")
+    if cur.fetchone()[0] == 0:
+        defaults = [
+            (1, 'Kepala TUUD', 1),
+            (2, 'Waka Rumkit', 2),
+            (3, 'Karumkit', 3),
+            (4, 'Pejabat Pengadaan', 4),
+        ]
+        for lv, lb, ur in defaults:
+            cur.execute("INSERT INTO approval_config (level,label,urutan) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                        (lv, lb, ur))
+
+    # ── Template nota dinas ───────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nota_template (
+            id SERIAL PRIMARY KEY,
+            nama TEXT NOT NULL,
+            header TEXT,
+            footer TEXT,
+            font_size INTEGER DEFAULT 11,
+            margin_top REAL DEFAULT 2.0,
+            margin_left REAL DEFAULT 3.0,
+            aktif INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("INSERT INTO nota_template (nama,header,footer) VALUES ('Default','','') ON CONFLICT DO NOTHING")
+
+    # ── HAK AKSES ROLE ────────────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS role_permission (
+            id SERIAL PRIMARY KEY,
+            role_kode TEXT NOT NULL,
+            modul_kode TEXT NOT NULL,
+            modul_nama TEXT NOT NULL,
+            grup TEXT NOT NULL DEFAULT 'Lainnya',
+            aktif INTEGER DEFAULT 1,
+            UNIQUE(role_kode, modul_kode)
+        )
+    """)
+
+    SEMUA_MODUL = [
+        ('dashboard',         'Dashboard',                 'Dashboard & Profil'),
+        ('profil',            'Profil & Ubah Password',    'Dashboard & Profil'),
+        ('riwayat',           'Riwayat Absensi',           'Dashboard & Profil'),
+        ('absen',             'Absen Masuk / Keluar',      'Absensi'),
+        ('lupa_absen',        'Lapor Lupa Absen',          'Absensi'),
+        ('izin',              'Pengajuan Izin',            'Absensi'),
+        ('nota_dinas',        'Lihat Nota Dinas',          'Nota Dinas'),
+        ('nota_dinas_buat',   'Buat Nota Dinas',           'Nota Dinas'),
+        ('nota_dinas_pdf',    'Unduh PDF Nota Dinas',      'Nota Dinas'),
+        ('dosir',             'E-Dosir (Upload Dokumen)',  'E-Dosir'),
+        ('surat_perintah',    'Lihat Surat Perintah',      'Surat Perintah'),
+        ('admin_dashboard',   'Dashboard Admin',           'Admin — Umum'),
+        ('admin_pegawai',     'Kelola Pegawai',            'Admin — Umum'),
+        ('admin_validasi',    'Validasi Registrasi',       'Admin — Umum'),
+        ('admin_settings',    'Pengaturan Sistem',         'Admin — Umum'),
+        ('admin_absensi',     'Monitor Absensi',           'Admin — Absensi'),
+        ('admin_izin',        'Kelola Izin',               'Admin — Absensi'),
+        ('admin_laporan',     'Laporan & Export',          'Admin — Absensi'),
+        ('admin_grafik',      'Grafik Statistik',          'Admin — Absensi'),
+        ('admin_departemen',  'Kelola Departemen',         'Admin — Master Data'),
+        ('admin_shift',       'Kelola Shift',              'Admin — Master Data'),
+        ('admin_master_role', 'Kelola Role',               'Admin — Master Data'),
+        ('admin_role_perm',   'Kelola Hak Akses',          'Admin — Master Data'),
+        ('admin_surat',       'Kelola Surat Perintah',     'Admin — Surat & Nota'),
+        ('admin_nota_dinas',  'Monitor Nota Dinas',        'Admin — Surat & Nota'),
+        ('admin_approval_cfg','Konfigurasi Approval',      'Admin — Surat & Nota'),
+        ('admin_nota_tmpl',   'Template Nota Dinas',       'Admin — Surat & Nota'),
+        ('admin_pejabat_ttd', 'Pejabat TTD',               'Admin — Surat & Nota'),
+        ('admin_dosir',       'Kelola E-Dosir',            'Admin — E-Dosir'),
+        ('admin_dosir_jenis', 'Jenis Dokumen Dosir',       'Admin — E-Dosir'),
+    ]
+
+    DEFAULT_PERMS = {
+        'admin':    [m[0] for m in SEMUA_MODUL],
+        'user':     ['dashboard','profil','riwayat','absen','lupa_absen','izin',
+                     'nota_dinas','nota_dinas_buat','nota_dinas_pdf','dosir','surat_perintah'],
+        'manajer':  ['dashboard','profil','riwayat','absen','lupa_absen','izin',
+                     'nota_dinas','nota_dinas_buat','nota_dinas_pdf','dosir','surat_perintah',
+                     'admin_dashboard','admin_absensi','admin_laporan','admin_grafik',
+                     'admin_izin','admin_nota_dinas'],
+        'dokter':   ['dashboard','profil','riwayat','absen','lupa_absen','izin',
+                     'nota_dinas','nota_dinas_buat','nota_dinas_pdf','dosir','surat_perintah'],
+        'perawat':  ['dashboard','profil','riwayat','absen','lupa_absen','izin',
+                     'dosir','surat_perintah'],
+        'apoteker': ['dashboard','profil','riwayat','absen','lupa_absen','izin',
+                     'dosir','surat_perintah'],
+        'bidan':    ['dashboard','profil','riwayat','absen','lupa_absen','izin',
+                     'dosir','surat_perintah'],
+        'teknisi':  ['dashboard','profil','riwayat','absen','lupa_absen','izin',
+                     'dosir','surat_perintah'],
+        'security': ['dashboard','profil','riwayat','absen','lupa_absen','izin'],
+        'staf':     ['dashboard','profil','riwayat','absen','lupa_absen','izin',
+                     'nota_dinas','nota_dinas_buat','nota_dinas_pdf','dosir','surat_perintah'],
+    }
+
+    for kode, nama, grup in SEMUA_MODUL:
+        for role_kode, allowed in DEFAULT_PERMS.items():
+            aktif = 1 if kode in allowed else 0
+            cur.execute("""INSERT INTO role_permission (role_kode,modul_kode,modul_nama,grup,aktif)
+                VALUES (%s,%s,%s,%s,%s) ON CONFLICT (role_kode,modul_kode) DO NOTHING""",
+                (role_kode, kode, nama, grup, aktif))
 
     conn.commit()
     cur.close()
@@ -559,9 +717,10 @@ def register():
                 f.save(os.path.join(app.config['UPLOAD_FOLDER'], fn))
                 foto_path = fn
         try:
-            cur.execute("""INSERT INTO users (nik,nama,email,password,jabatan,departemen,departemen_id,no_hp,alamat,tanggal_lahir,jenis_kelamin,foto)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (request.form['nik'].strip(), request.form['nama'].strip(), request.form['email'].strip(),
+            cur.execute("""INSERT INTO users (nik,nip,nama,email,password,jabatan,departemen,departemen_id,no_hp,alamat,tanggal_lahir,jenis_kelamin,foto)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (request.form['nik'].strip(), request.form.get('nip','').strip(),
+                 request.form['nama'].strip(), request.form['email'].strip(),
                  generate_password_hash(request.form['password']), request.form.get('jabatan','').strip(),
                  dept_nama, dept_id, request.form.get('no_hp','').strip(), request.form.get('alamat','').strip(),
                  request.form.get('tanggal_lahir',''), request.form.get('jenis_kelamin',''), foto_path))
@@ -1125,9 +1284,10 @@ def edit_pegawai(uid):
             if f and f.filename and allowed_file(f.filename):
                 fn = secure_filename(f"user_{uid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{f.filename.rsplit('.',1)[-1].lower()}")
                 f.save(os.path.join(app.config['UPLOAD_FOLDER'], fn)); foto_path = fn
-        fields = ["nik=%s","nama=%s","email=%s","jabatan=%s","departemen=%s","departemen_id=%s",
+        fields = ["nik=%s","nip=%s","nama=%s","email=%s","jabatan=%s","departemen=%s","departemen_id=%s",
                   "shift_id=%s","no_hp=%s","alamat=%s","tanggal_lahir=%s","jenis_kelamin=%s","status=%s","role=%s"]
-        params = [request.form['nik'], request.form['nama'], request.form['email'],
+        params = [request.form['nik'], request.form.get('nip','').strip(),
+                  request.form['nama'], request.form['email'],
                   request.form.get('jabatan',''), dept_nama, dept_id,
                   request.form.get('shift_id') or None, request.form.get('no_hp',''),
                   request.form.get('alamat',''), request.form.get('tanggal_lahir',''),
@@ -1148,8 +1308,10 @@ def edit_pegawai(uid):
     depts = cur.fetchall()
     cur.execute("SELECT * FROM shift WHERE aktif=1 ORDER BY jam_masuk")
     shifts = cur.fetchall()
+    cur.execute("SELECT * FROM master_role WHERE aktif=1 ORDER BY urutan")
+    roles = cur.fetchall()
     cur.close(); conn.close()
-    return render_template('admin/edit_pegawai.html', user=user, depts=depts, shifts=shifts)
+    return render_template('admin/edit_pegawai.html', user=user, depts=depts, shifts=shifts, roles=roles)
 
 @app.route('/admin/pegawai/hapus/<int:uid>', methods=['POST'])
 @admin_required
@@ -2049,6 +2211,29 @@ def api_surat_template(tid):
 # ── NOTA DINAS ────────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
+def get_approval_levels():
+    """Ambil level approval dari database (bisa diubah admin)."""
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT level, label FROM approval_config WHERE aktif=1 ORDER BY urutan, level")
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close(); conn.close()
+        return rows if rows else [
+            {'level': 1, 'label': 'Kepala TUUD'},
+            {'level': 2, 'label': 'Waka Rumkit'},
+            {'level': 3, 'label': 'Karumkit'},
+            {'level': 4, 'label': 'Pejabat Pengadaan'},
+        ]
+    except Exception:
+        return [
+            {'level': 1, 'label': 'Kepala TUUD'},
+            {'level': 2, 'label': 'Waka Rumkit'},
+            {'level': 3, 'label': 'Karumkit'},
+            {'level': 4, 'label': 'Pejabat Pengadaan'},
+        ]
+
+# Backward-compat alias (dipakai di beberapa route lama)
 APPROVAL_LEVELS = [
     {'level': 1, 'label': 'Kepala TUUD'},
     {'level': 2, 'label': 'Waka Rumkit'},
@@ -2094,12 +2279,13 @@ def nota_dinas_buat():
                 fn = secure_filename(f"nd_{uid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
                 f.save(os.path.join(app.config['SURAT_FOLDER'], fn))
                 lampiran = fn
-        cur.execute("""INSERT INTO nota_dinas (nomor,judul,perihal,kepada,isi,dari_user,lampiran)
-            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-            (nomor, judul, perihal, kepada, isi, uid, lampiran))
+        dasar = request.form.get('dasar','').strip()
+        cur.execute("""INSERT INTO nota_dinas (nomor,judul,perihal,kepada,isi,dasar,dari_user,lampiran)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (nomor, judul, perihal, kepada, isi, dasar, uid, lampiran))
         nid = cur.fetchone()['id']
-        # Buat approval chain
-        for lv in APPROVAL_LEVELS:
+        # Buat approval chain (dari DB — bisa diubah admin)
+        for lv in get_approval_levels():
             cur.execute("""INSERT INTO nota_approval (nota_id,level,role_label,status,urutan)
                 VALUES (%s,%s,%s,'pending',%s)""", (nid, lv['level'], lv['label'], lv['level']))
         # Notif ke admin (level 1)
@@ -2137,74 +2323,385 @@ def nota_dinas_detail(nid):
 def nota_dinas_pdf(nid):
     conn = get_db(); cur = q(conn)
     cur.execute("""SELECT nd.*,u.nama as nama_pembuat,u.jabatan as jabatan_pembuat,
-        u.departemen as dept_pembuat FROM nota_dinas nd
+        u.departemen as dept_pembuat, u.nik as nik_pembuat
+        FROM nota_dinas nd
         JOIN users u ON nd.dari_user=u.id WHERE nd.id=%s""", (nid,))
     nota = cur.fetchone()
-    cur.execute("""SELECT na.*,u.nama as approver_nama,u.jabatan as approver_jabatan
+    cur.execute("""SELECT na.*,u.nama as approver_nama,u.jabatan as approver_jabatan,
+        u.nik as approver_nik
         FROM nota_approval na LEFT JOIN users u ON na.user_id=u.id
         WHERE na.nota_id=%s ORDER BY na.level""", (nid,))
     approvals = cur.fetchall()
     cur.execute("SELECT * FROM settings WHERE id=1")
     settings = cur.fetchone()
+    cur.execute("SELECT * FROM nota_template WHERE aktif=1 ORDER BY id DESC LIMIT 1")
+    tmpl = cur.fetchone()
     cur.close(); conn.close()
-    instansi = settings['nama_perusahaan'] if settings else 'RS Slamet Riyadi'
+
+    instansi   = settings['nama_perusahaan'] if settings else 'RS SLAMET RIYADI'
+    font_size  = int(tmpl['font_size'])   if tmpl and tmpl.get('font_size')  else 11
+    margin_top = float(tmpl['margin_top'])  if tmpl and tmpl.get('margin_top')  else 2.0
+    margin_left= float(tmpl['margin_left']) if tmpl and tmpl.get('margin_left') else 3.0
+    tmpl_header = (tmpl['header'] or '').strip() if tmpl else ''
+    tmpl_footer = (tmpl['footer'] or '').strip() if tmpl else ''
+
     from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
-    from reportlab.platypus import HRFlowable, Image as RLImage
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY, TA_RIGHT
+    from reportlab.platypus import HRFlowable, Image as RLImage, KeepTogether
+    from reportlab.lib.colors import black, grey, HexColor
+
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm,
-                            leftMargin=3*cm, rightMargin=2*cm)
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            topMargin=margin_top*cm, bottomMargin=2*cm,
+                            leftMargin=margin_left*cm, rightMargin=2*cm)
     elems = []
-    # Header
-    elems.append(Paragraph(f"<b>{instansi.upper()}</b>", ParagraphStyle('h',fontSize=14,alignment=TA_CENTER,spaceAfter=4)))
-    elems.append(HRFlowable(width="100%", thickness=2, color=colors.black))
-    elems.append(HRFlowable(width="100%", thickness=0.5, color=colors.black, spaceAfter=8))
-    elems.append(Paragraph("<b>NOTA DINAS</b>", ParagraphStyle('t',fontSize=13,alignment=TA_CENTER,spaceAfter=10)))
-    # Info
-    tgl = nota['tanggal'].strftime('%d %B %Y') if hasattr(nota['tanggal'],'strftime') else str(nota['tanggal'])
-    info = [
-        ['Nomor', f": {nota['nomor'] or '-'}"],
-        ['Kepada', f": {nota['kepada'] or '-'}"],
-        ['Dari', f": {nota['nama_pembuat']} / {nota['jabatan_pembuat'] or '-'}"],
-        ['Perihal', f": {nota['perihal'] or nota['judul']}"],
-        ['Tanggal', f": {tgl}"],
+    fs = font_size
+
+    BULAN_ID = {1:'Januari',2:'Februari',3:'Maret',4:'April',5:'Mei',6:'Juni',
+                7:'Juli',8:'Agustus',9:'September',10:'Oktober',11:'November',12:'Desember'}
+    def fmt_tgl(d):
+        if hasattr(d,'day'): return f"{d.day} {BULAN_ID[d.month]} {d.year}"
+        try:
+            from datetime import datetime as _dt
+            dd = _dt.fromisoformat(str(d))
+            return f"{dd.day} {BULAN_ID[dd.month]} {dd.year}"
+        except Exception: return str(d)
+
+    def ps(name, **kw):
+        defaults = dict(fontName='Helvetica', fontSize=fs, leading=int(fs*1.4))
+        defaults.update(kw)
+        return ParagraphStyle(name, **defaults)
+
+    # ── KOP SURAT ────────────────────────────────────────────────────────────
+    header_lines = tmpl_header.split('\n') if tmpl_header else [instansi.upper()]
+
+    # Cek ada logo tidak
+    logo_path = None
+    if settings and settings.get('logo'):
+        lp = os.path.join('static','uploads','logo', settings['logo'])
+        if os.path.exists(lp):
+            logo_path = lp
+
+    if logo_path:
+        # Kop dengan logo di kiri, teks di tengah/kanan
+        logo_img = RLImage(logo_path, width=2*cm, height=2*cm)
+        logo_img.hAlign = 'LEFT'
+        header_paras = [Paragraph(line or '&nbsp;',
+            ps(f'kh{i}', fontSize=fs+2 if i==0 else fs, alignment=TA_CENTER,
+               fontName='Helvetica-Bold' if i==0 else 'Helvetica', spaceAfter=1))
+            for i, line in enumerate(header_lines)]
+        kop_data = [[logo_img, header_paras]]
+        kop_tbl = Table(kop_data, colWidths=[2.5*cm, 13.5*cm])
+        kop_tbl.setStyle(TableStyle([
+            ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+            ('ALIGN',(0,0),(0,0),'LEFT'),
+            ('ALIGN',(1,0),(1,0),'CENTER'),
+        ]))
+        elems.append(kop_tbl)
+    else:
+        for i, line in enumerate(header_lines):
+            elems.append(Paragraph(line or '&nbsp;',
+                ps(f'kh{i}', fontSize=fs+2 if i==0 else fs,
+                   fontName='Helvetica-Bold' if i==0 else 'Helvetica',
+                   alignment=TA_CENTER, spaceAfter=1)))
+
+    elems.append(Spacer(1, 0.2*cm))
+    elems.append(HRFlowable(width="100%", thickness=2, color=black, spaceAfter=1))
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=black, spaceAfter=8))
+
+    # ── JUDUL ─────────────────────────────────────────────────────────────────
+    elems.append(Spacer(1, 0.3*cm))
+    elems.append(Paragraph("<b>NOTA DINAS</b>",
+        ps('judul', fontSize=fs+2, fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=2)))
+    elems.append(Paragraph(f"<b>NOMOR : {nota.get('nomor') or '-'}</b>",
+        ps('nomor', fontSize=fs+1, fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=10)))
+
+    # ── INFO SURAT ────────────────────────────────────────────────────────────
+    tgl = fmt_tgl(nota.get('tanggal') or nota.get('created_at'))
+    pembuat_info = nota['nama_pembuat']
+    if nota.get('jabatan_pembuat'): pembuat_info += f" / {nota['jabatan_pembuat']}"
+    if nota.get('dept_pembuat'):    pembuat_info += f" / {nota['dept_pembuat']}"
+
+    info_rows = [
+        [Paragraph('YTH',  ps('il', fontName='Helvetica')),
+         Paragraph(f": {nota.get('kepada') or '-'}", ps('iv'))],
+        [Paragraph('Dari', ps('il', fontName='Helvetica')),
+         Paragraph(f": {pembuat_info}", ps('iv'))],
+        [Paragraph('Perihal', ps('il', fontName='Helvetica')),
+         Paragraph(f": {nota.get('perihal') or nota.get('judul') or '-'}", ps('iv'))],
+        [Paragraph('Tanggal', ps('il', fontName='Helvetica')),
+         Paragraph(f": {tgl}", ps('iv'))],
     ]
-    info_table = Table(info, colWidths=[3.5*cm, 12.5*cm])
-    info_table.setStyle(TableStyle([('FONTNAME',(0,0),(-1,-1),'Helvetica'),
-                                    ('FONTSIZE',(0,0),(-1,-1),11),
-                                    ('VALIGN',(0,0),(-1,-1),'TOP'),
-                                    ('BOTTOMPADDING',(0,0),(-1,-1),4)]))
-    elems.append(info_table)
-    elems.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey, spaceBefore=8, spaceAfter=10))
-    # Isi
-    for line in (nota['isi'] or '').split('\n'):
-        elems.append(Paragraph(line or '&nbsp;', ParagraphStyle('body',fontSize=11,leading=16,
-            alignment=TA_JUSTIFY, spaceAfter=4)))
-    elems.append(Spacer(1, 1*cm))
-    # Kolom TTD berjenjang
-    elems.append(Paragraph("<b>Mengetahui / Menyetujui:</b>", ParagraphStyle('k',fontSize=11,spaceAfter=8)))
-    ttd_cols = []
-    for ap in approvals:
-        status_txt = '✓ Disetujui' if ap['status']=='approved' else ('✗ Ditolak' if ap['status']=='rejected' else 'Menunggu...')
-        ttd_cols.append(Paragraph(f"<b>{ap['role_label']}</b><br/><br/><br/><br/>{ap['approver_nama'] or '____________'}<br/><font size=9>{status_txt}</font>",
-            ParagraphStyle('ttd',fontSize=10,alignment=TA_CENTER)))
-    if ttd_cols:
-        w = 16/len(ttd_cols)
-        ttd_table = Table([ttd_cols], colWidths=[w*cm]*len(ttd_cols))
-        ttd_table.setStyle(TableStyle([('ALIGN',(0,0),(-1,-1),'CENTER'),
-                                        ('VALIGN',(0,0),(-1,-1),'TOP'),
-                                        ('BOX',(0,0),(-1,-1),0.5,colors.grey),
-                                        ('INNERGRID',(0,0),(-1,-1),0.5,colors.grey),
-                                        ('TOPPADDING',(0,0),(-1,-1),8),
-                                        ('BOTTOMPADDING',(0,0),(-1,-1),8)]))
-        elems.append(ttd_table)
+    info_tbl = Table(info_rows, colWidths=[3.5*cm, 12.5*cm])
+    info_tbl.setStyle(TableStyle([
+        ('FONTNAME',(0,0),(-1,-1),'Helvetica'),
+        ('FONTSIZE',(0,0),(-1,-1),fs),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('BOTTOMPADDING',(0,0),(-1,-1),3),
+        ('TOPPADDING',(0,0),(-1,-1),1),
+    ]))
+    elems.append(info_tbl)
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=grey, spaceBefore=8, spaceAfter=10))
+
+    # ── DASAR ─────────────────────────────────────────────────────────────────
+    dasar_text = nota.get('dasar','') or ''
+    if dasar_text.strip():
+        elems.append(Paragraph("<b>1.&nbsp; Dasar :</b>",
+            ps('dasar_hdr', fontName='Helvetica-Bold', spaceAfter=4)))
+        dasar_lines = [l.strip() for l in dasar_text.split('\n') if l.strip()]
+        huruf = ['a','b','c','d','e','f','g','h','i','j']
+        for idx, line in enumerate(dasar_lines):
+            label = huruf[idx] if idx < len(huruf) else str(idx+1)
+            elems.append(Paragraph(
+                f"&nbsp;&nbsp;&nbsp;&nbsp;{label}.&nbsp; {line}",
+                ps(f'dasar_{idx}', alignment=TA_JUSTIFY, spaceAfter=3, leftIndent=0.5*cm)))
+        angka_isi = "2"
+    else:
+        angka_isi = "1"
+
+    # ── ISI SURAT ─────────────────────────────────────────────────────────────
+    isi_text = (nota.get('isi') or '').strip()
+    if isi_text:
+        elems.append(Spacer(1, 0.15*cm))
+        isi_lines = isi_text.split('\n')
+        for idx, line in enumerate(isi_lines):
+            stripped = line.strip()
+            if not stripped:
+                elems.append(Spacer(1, 0.2*cm))
+                continue
+            elems.append(Paragraph(stripped,
+                ps(f'isi_{idx}', alignment=TA_JUSTIFY, spaceAfter=4)))
+
+    elems.append(Spacer(1, 0.8*cm))
+
+    # ── TTD ───────────────────────────────────────────────────────────────────
+    # Format: TTD pembuat di kiri, approver di kanan (mirip screenshot)
+    TTD_DIR = app.config.get('TTD_FOLDER', os.path.join('static','uploads','ttd'))
+    kota = 'Surakarta'  # bisa dari settings nanti
+
+    def make_ttd_cell(label, nama, jabatan, nik, tgl_str, ttd_file=None, status=None):
+        items = []
+        items.append(Paragraph(f"{kota},&nbsp; {tgl_str}",
+            ps('tgl_ttd', fontSize=fs-1, alignment=TA_LEFT, spaceAfter=2)))
+        items.append(Paragraph(label,
+            ps('lbl_ttd', fontSize=fs-1, alignment=TA_LEFT, spaceAfter=2)))
+        # Gambar TTD
+        if ttd_file:
+            tp = os.path.join(TTD_DIR, ttd_file)
+            if os.path.exists(tp):
+                try:
+                    img = RLImage(tp, width=3*cm, height=1.2*cm)
+                    img.hAlign = 'LEFT'
+                    items.append(img)
+                except Exception:
+                    items.append(Spacer(1, 1.5*cm))
+            else:
+                items.append(Spacer(1, 1.5*cm))
+        else:
+            items.append(Spacer(1, 1.5*cm))
+        nama_str = nama or '________________________'
+        if jabatan: nama_str += f"<br/>{jabatan}"
+        if nik: nama_str += f"<br/>NIP/NRP {nik}"
+        items.append(Paragraph(nama_str, ps('nama_ttd', fontSize=fs-1, spaceAfter=2)))
+        if status and status != 'pending':
+            warna = '#16a34a' if status=='approved' else '#dc2626'
+            items.append(Paragraph(
+                f"<font color='{warna}'>{'✓ Disetujui' if status=='approved' else '✗ Ditolak'}</font>",
+                ps('st_ttd', fontSize=fs-2)))
+        return items
+
+    tgl_str = fmt_tgl(nota.get('tanggal') or nota.get('created_at'))
+
+    if approvals:
+        # Pembuat di kiri, approver berurutan di kanan
+        ttd_cells = []
+        # Cell pembuat
+        ttd_cells.append(make_ttd_cell(
+            nota.get('jabatan_pembuat') or 'Pembuat,',
+            nota['nama_pembuat'],
+            nota.get('jabatan_pembuat',''),
+            nota.get('nik_pembuat',''),
+            tgl_str
+        ))
+        # Cell tiap approver
+        for ap in approvals:
+            ttd_cells.append(make_ttd_cell(
+                ap.get('role_label','') + ',',
+                ap.get('approver_nama',''),
+                ap.get('approver_jabatan',''),
+                ap.get('approver_nik',''),
+                tgl_str,
+                ttd_file=ap.get('ttd_file'),
+                status=ap.get('status')
+            ))
+        ncols = len(ttd_cells)
+        avail_w = (21 - margin_left - 2) * cm
+        col_w = avail_w / ncols
+        ttd_tbl = Table([ttd_cells], colWidths=[col_w]*ncols)
+        ttd_tbl.setStyle(TableStyle([
+            ('VALIGN',(0,0),(-1,-1),'TOP'),
+            ('ALIGN',(0,0),(-1,-1),'LEFT'),
+            ('TOPPADDING',(0,0),(-1,-1),6),
+            ('BOTTOMPADDING',(0,0),(-1,-1),6),
+        ]))
+        elems.append(ttd_tbl)
+    else:
+        # Hanya pembuat
+        items = make_ttd_cell(
+            nota.get('jabatan_pembuat') or 'Hormat kami,',
+            nota['nama_pembuat'],
+            nota.get('jabatan_pembuat',''),
+            nota.get('nik_pembuat',''),
+            tgl_str
+        )
+        elems.append(Spacer(1,0.3*cm))
+        for it in items: elems.append(it)
+
+    # ── LAMPIRAN (halaman baru jika ada) ──────────────────────────────────────
+    lampiran = nota.get('lampiran')
+    if lampiran:
+        SURAT_DIR = app.config.get('SURAT_FOLDER', os.path.join('static','uploads','surat'))
+        lamp_path = os.path.join(SURAT_DIR, lampiran)
+        if os.path.exists(lamp_path):
+            from reportlab.platypus import PageBreak
+            elems.append(PageBreak())
+
+            # Header lampiran
+            if logo_path:
+                logo_img2 = RLImage(logo_path, width=2*cm, height=2*cm)
+                header_paras2 = [Paragraph(line or '&nbsp;',
+                    ps(f'kh2_{i}', fontSize=fs+2 if i==0 else fs,
+                       fontName='Helvetica-Bold' if i==0 else 'Helvetica',
+                       alignment=TA_CENTER, spaceAfter=1))
+                    for i, line in enumerate(header_lines)]
+                kop2 = Table([[logo_img2, header_paras2]], colWidths=[2.5*cm, 13.5*cm])
+                kop2.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                    ('ALIGN',(1,0),(1,0),'CENTER')]))
+                elems.append(kop2)
+            else:
+                for i, line in enumerate(header_lines):
+                    elems.append(Paragraph(line or '&nbsp;',
+                        ps(f'kh2_{i}', fontSize=fs+2 if i==0 else fs,
+                           fontName='Helvetica-Bold' if i==0 else 'Helvetica',
+                           alignment=TA_CENTER, spaceAfter=1)))
+
+            elems.append(HRFlowable(width="100%", thickness=2, color=black, spaceAfter=1))
+            elems.append(HRFlowable(width="100%", thickness=0.5, color=black, spaceAfter=8))
+
+            # Info lampiran di kanan atas
+            lamp_info = Table([[
+                '',
+                Paragraph(f"Lampiran Nota Dinas<br/>Nomor : {nota.get('nomor') or '-'}<br/>Tanggal : {tgl_str}",
+                    ps('lamp_info', fontSize=fs-1, alignment=TA_RIGHT))
+            ]], colWidths=[10*cm, 6*cm])
+            elems.append(lamp_info)
+            elems.append(Spacer(1, 0.5*cm))
+
+            ext_lamp = lampiran.rsplit('.',1)[-1].lower() if '.' in lampiran else ''
+            if ext_lamp in {'png','jpg','jpeg','gif'}:
+                try:
+                    img_lamp = RLImage(lamp_path, width=14*cm, height=12*cm, kind='proportional')
+                    img_lamp.hAlign = 'LEFT'
+                    elems.append(img_lamp)
+                except Exception:
+                    elems.append(Paragraph(f"[Gambar tidak dapat dimuat]",
+                        ps('le', textColor=colors.red)))
+            elif ext_lamp == 'pdf':
+                elems.append(Paragraph(f"Lampiran PDF: {lampiran} (lihat file terpisah)",
+                    ps('lp', textColor=colors.blue)))
+
+    # ── FOOTER KUSTOM ─────────────────────────────────────────────────────────
+    if tmpl_footer:
+        elems.append(Spacer(1, 0.5*cm))
+        elems.append(HRFlowable(width="100%", thickness=0.5, color=grey))
+        for baris in tmpl_footer.split('\n'):
+            elems.append(Paragraph(baris or '&nbsp;',
+                ps('tf', fontSize=fs-2, alignment=TA_CENTER, spaceAfter=2)))
+
     doc.build(elems)
     buf.seek(0)
-    nomor_clean = (nota['nomor'] or str(nid)).replace('/','_')
+    nomor_clean = (nota.get('nomor') or str(nid)).replace('/','_')
     return send_file(buf, mimetype='application/pdf',
                      download_name=f"nota_{nomor_clean}.pdf", as_attachment=False)
 
+
+
 # ── ADMIN NOTA DINAS ──────────────────────────────────────────────────────────
+
+# ── Kelola Level Approval ─────────────────────────────────────────────────────
+@app.route('/admin/approval-config', methods=['GET','POST'])
+@admin_required
+def admin_approval_config():
+    conn = get_db(); cur = q(conn)
+    if request.method == 'POST':
+        aksi = request.form.get('aksi','')
+        if aksi == 'tambah':
+            label = request.form.get('label','').strip()
+            cur.execute("SELECT COALESCE(MAX(level),0)+1 as next_lv FROM approval_config")
+            next_lv = cur.fetchone()['next_lv']
+            cur.execute("INSERT INTO approval_config (level,label,urutan) VALUES (%s,%s,%s)",
+                        (next_lv, label, next_lv))
+        elif aksi == 'edit':
+            aid = int(request.form.get('id'))
+            label = request.form.get('label','').strip()
+            cur.execute("UPDATE approval_config SET label=%s WHERE id=%s", (label, aid))
+        elif aksi == 'hapus':
+            aid = int(request.form.get('id'))
+            cur.execute("DELETE FROM approval_config WHERE id=%s", (aid,))
+            # Re-urut level
+            cur.execute("SELECT id FROM approval_config ORDER BY urutan, level")
+            rows = cur.fetchall()
+            for i, r in enumerate(rows, 1):
+                cur.execute("UPDATE approval_config SET level=%s, urutan=%s WHERE id=%s",
+                            (i, i, r['id']))
+        elif aksi == 'toggle':
+            aid = int(request.form.get('id'))
+            cur.execute("UPDATE approval_config SET aktif = CASE WHEN aktif=1 THEN 0 ELSE 1 END WHERE id=%s", (aid,))
+        conn.commit()
+        flash('Konfigurasi approval diperbarui.', 'success')
+    cur.execute("SELECT * FROM approval_config ORDER BY urutan, level")
+    config_list = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/approval_config.html', config_list=config_list)
+
+# ── Kelola Template Format Nota Dinas ────────────────────────────────────────
+@app.route('/admin/nota-template', methods=['GET','POST'])
+@admin_required
+def admin_nota_template():
+    conn = get_db(); cur = q(conn)
+    if request.method == 'POST':
+        aksi = request.form.get('aksi','')
+        if aksi == 'tambah':
+            nama       = request.form.get('nama','').strip()
+            header     = request.form.get('header','').strip()
+            footer     = request.form.get('footer','').strip()
+            font_size  = int(request.form.get('font_size', 11) or 11)
+            margin_top = float(request.form.get('margin_top', 2.0) or 2.0)
+            margin_left= float(request.form.get('margin_left', 3.0) or 3.0)
+            # Nonaktifkan yang lain
+            cur.execute("UPDATE nota_template SET aktif=0")
+            cur.execute("""INSERT INTO nota_template (nama,header,footer,font_size,margin_top,margin_left,aktif)
+                VALUES (%s,%s,%s,%s,%s,%s,1)""",
+                (nama, header, footer, font_size, margin_top, margin_left))
+            flash(f'Template "{nama}" ditambahkan dan diaktifkan.', 'success')
+        elif aksi == 'aktifkan':
+            tid = int(request.form.get('id'))
+            cur.execute("UPDATE nota_template SET aktif=0")
+            cur.execute("UPDATE nota_template SET aktif=1 WHERE id=%s", (tid,))
+            flash('Template diaktifkan.', 'success')
+        elif aksi == 'hapus':
+            tid = int(request.form.get('id'))
+            cur.execute("DELETE FROM nota_template WHERE id=%s", (tid,))
+            # Pastikan masih ada yang aktif
+            cur.execute("SELECT COUNT(*) as n FROM nota_template WHERE aktif=1")
+            if cur.fetchone()['n'] == 0:
+                cur.execute("UPDATE nota_template SET aktif=1 WHERE id=(SELECT id FROM nota_template ORDER BY id LIMIT 1)")
+            flash('Template dihapus.', 'success')
+        conn.commit()
+    cur.execute("SELECT * FROM nota_template ORDER BY id")
+    tmpl_list = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/nota_template.html', tmpl_list=tmpl_list)
 
 @app.route('/admin/nota-dinas')
 @admin_required
@@ -2289,6 +2786,181 @@ def admin_nota_approve(nid, level):
 
 
 
+# ── MASTER ROLE ───────────────────────────────────────────────────────────────
+@app.route('/admin/master-role', methods=['GET','POST'])
+@admin_required
+def admin_master_role():
+    conn = get_db(); cur = q(conn)
+    if request.method == 'POST':
+        aksi = request.form.get('aksi')
+        if aksi == 'tambah':
+            kode  = request.form.get('kode','').strip().lower().replace(' ','_')
+            nama  = request.form.get('nama','').strip()
+            desk  = request.form.get('deskripsi','').strip()
+            urut  = int(request.form.get('urutan', 99))
+            try:
+                cur.execute("INSERT INTO master_role (kode,nama,deskripsi,urutan) VALUES (%s,%s,%s,%s)",
+                    (kode, nama, desk, urut))
+                conn.commit()
+                flash(f'Role "{nama}" berhasil ditambahkan.', 'success')
+            except Exception:
+                conn.rollback()
+                flash('Kode role sudah ada.', 'error')
+        elif aksi == 'edit':
+            rid  = request.form.get('id')
+            nama = request.form.get('nama','').strip()
+            desk = request.form.get('deskripsi','').strip()
+            urut = int(request.form.get('urutan', 99))
+            aktif= int(request.form.get('aktif', 1))
+            cur.execute("UPDATE master_role SET nama=%s,deskripsi=%s,urutan=%s,aktif=%s WHERE id=%s",
+                (nama, desk, urut, aktif, rid))
+            conn.commit()
+            flash('Role berhasil diperbarui.', 'success')
+        elif aksi == 'hapus':
+            rid = request.form.get('id')
+            cur.execute("SELECT COUNT(*) as c FROM users WHERE role=(SELECT kode FROM master_role WHERE id=%s)", (rid,))
+            cnt = cur.fetchone()['c']
+            if cnt > 0:
+                flash(f'Role tidak bisa dihapus, masih dipakai {cnt} pegawai.', 'error')
+            else:
+                cur.execute("DELETE FROM master_role WHERE id=%s", (rid,))
+                conn.commit()
+                flash('Role berhasil dihapus.', 'success')
+        cur.close(); conn.close()
+        return redirect(url_for('admin_master_role'))
+    cur.execute("SELECT mr.*, COUNT(u.id) as jml_user FROM master_role mr LEFT JOIN users u ON u.role=mr.kode GROUP BY mr.id ORDER BY mr.urutan")
+    roles = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template('admin/master_role.html', roles=roles)
+
+# ── REORDER ROLE ──────────────────────────────────────────────────────────────
+@app.route('/admin/master-role/reorder', methods=['POST'])
+@admin_required
+def admin_master_role_reorder():
+    try:
+        data = request.get_json()
+        order = data.get('order', [])
+        conn = get_db(); cur = q(conn)
+        for idx, rid in enumerate(order):
+            cur.execute("UPDATE master_role SET urutan=%s WHERE id=%s", (idx, rid))
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+
+# ── HAK AKSES ROLE ────────────────────────────────────────────────────────────
+
+def get_role_permissions(role_kode):
+    """Kembalikan set modul_kode yang diizinkan untuk role tertentu."""
+    try:
+        conn = get_db(); cur = q(conn)
+        cur.execute("SELECT modul_kode FROM role_permission WHERE role_kode=%s AND aktif=1", (role_kode,))
+        perms = {r['modul_kode'] for r in cur.fetchall()}
+        cur.close(); conn.close()
+        return perms
+    except Exception:
+        return set()
+
+def has_permission(modul_kode):
+    """Cek apakah user session punya akses ke modul_kode."""
+    role = session.get('role', '')
+    if role == 'admin':
+        return True
+    return modul_kode in get_role_permissions(role)
+
+def permission_required(modul_kode):
+    """Decorator: tolak akses jika tidak punya permission."""
+    def decorator(f):
+        @wraps(f)
+        def dec(*a, **kw):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+            if not has_permission(modul_kode):
+                flash('Anda tidak memiliki akses ke fitur ini.', 'error')
+                return redirect(url_for('dashboard'))
+            return f(*a, **kw)
+        return dec
+    return decorator
+
+@app.route('/admin/role-permission')
+@admin_required
+def admin_role_permission():
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM master_role WHERE aktif=1 ORDER BY urutan")
+    roles = cur.fetchall()
+    # Ambil semua modul unik, dikelompokkan per grup (urut berdasarkan modul_kode)
+    cur.execute("""SELECT DISTINCT modul_kode, modul_nama, grup
+        FROM role_permission ORDER BY grup, modul_nama""")
+    modul_rows = cur.fetchall()
+    # Buat dict: {role_kode: {modul_kode: aktif}}
+    cur.execute("SELECT role_kode, modul_kode, aktif FROM role_permission")
+    perm_map = {}
+    for r in cur.fetchall():
+        perm_map.setdefault(r['role_kode'], {})[r['modul_kode']] = r['aktif']
+    # Kelompokkan modul per grup
+    from collections import OrderedDict
+    grups = OrderedDict()
+    for m in modul_rows:
+        grups.setdefault(m['grup'], []).append(m)
+    cur.close(); conn.close()
+    return render_template('admin/role_permission.html',
+        roles=roles, grups=grups, perm_map=perm_map)
+
+@app.route('/admin/role-permission/save', methods=['POST'])
+@admin_required
+def admin_role_permission_save():
+    """Simpan seluruh matrix permission dari form POST."""
+    conn = get_db(); cur = q(conn)
+    # Ambil semua kombinasi role × modul yang ada
+    cur.execute("SELECT role_kode, modul_kode FROM role_permission")
+    all_pairs = {(r['role_kode'], r['modul_kode']) for r in cur.fetchall()}
+    # Semua checkbox yang dicentang dikirim sebagai perm_<role>_<modul>
+    checked = set()
+    for key in request.form:
+        if key.startswith('perm_'):
+            parts = key[5:].split('_', 1)  # perm_{role}_{modul}
+            if len(parts) == 2:
+                checked.add((parts[0], parts[1]))
+    # Update semua
+    for role_kode, modul_kode in all_pairs:
+        aktif = 1 if (role_kode, modul_kode) in checked else 0
+        cur.execute("UPDATE role_permission SET aktif=%s WHERE role_kode=%s AND modul_kode=%s",
+            (aktif, role_kode, modul_kode))
+    conn.commit(); cur.close(); conn.close()
+    flash('Hak akses berhasil disimpan.', 'success')
+    return redirect(url_for('admin_role_permission'))
+
+@app.route('/admin/role-permission/api', methods=['POST'])
+@admin_required
+def admin_role_permission_api():
+    """Toggle satu permission via AJAX (untuk toggle langsung di matrix)."""
+    try:
+        data = request.get_json()
+        role_kode  = data['role_kode']
+        modul_kode = data['modul_kode']
+        aktif      = int(data['aktif'])
+        conn = get_db(); cur = q(conn)
+        cur.execute("""INSERT INTO role_permission (role_kode,modul_kode,modul_nama,grup,aktif)
+            VALUES (%s,%s,(SELECT modul_nama FROM role_permission WHERE modul_kode=%s LIMIT 1),
+                   (SELECT grup FROM role_permission WHERE modul_kode=%s LIMIT 1),%s)
+            ON CONFLICT (role_kode,modul_kode) DO UPDATE SET aktif=%s""",
+            (role_kode, modul_kode, modul_kode, modul_kode, aktif, aktif))
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({'ok': True, 'aktif': aktif})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+
+@app.route('/admin/role-permission/preset/<role_kode>', methods=['POST'])
+@admin_required
+def admin_role_permission_preset(role_kode):
+    """Terapkan preset (aktifkan semua / nonaktifkan semua) untuk satu role."""
+    mode = request.json.get('mode', 'none')  # 'all' atau 'none'
+    aktif = 1 if mode == 'all' else 0
+    conn = get_db(); cur = q(conn)
+    cur.execute("UPDATE role_permission SET aktif=%s WHERE role_kode=%s", (aktif, role_kode))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
+
 if __name__ == '__main__':
     init_db()
-    app.run(debug=False, host='0.0.0.0', port=5030)
+    app.run(debug=True, host='0.0.0.0', port=5030)
