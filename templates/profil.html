@@ -73,7 +73,9 @@
             <div style="position:relative">
               <input type="password" name="password_lama" id="pw_lama" required
                 class="input-field" placeholder="Masukkan password saat ini"
-                style="font-size:15px;padding-right:44px">
+                style="font-size:15px;padding-right:44px"
+                autocomplete="current-password" readonly
+                onfocus="this.removeAttribute('readonly')">
               <button type="button" onclick="togglePw('pw_lama','ico_lama')"
                 style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;font-size:18px;line-height:1;color:#94a3b8" id="ico_lama">👁</button>
             </div>
@@ -85,7 +87,8 @@
             <div style="position:relative">
               <input type="password" name="password_baru" id="pw_baru" required minlength="6"
                 class="input-field" placeholder="Minimal 6 karakter"
-                style="font-size:15px;padding-right:44px" oninput="cekMatch()">
+                style="font-size:15px;padding-right:44px" oninput="cekMatch()"
+                autocomplete="new-password">
               <button type="button" onclick="togglePw('pw_baru','ico_baru')"
                 style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;font-size:18px;line-height:1;color:#94a3b8" id="ico_baru">👁</button>
             </div>
@@ -105,7 +108,8 @@
             <div style="position:relative">
               <input type="password" name="password_konfirm" id="pw_konfirm" required
                 class="input-field" placeholder="Ulangi password baru"
-                style="font-size:15px;padding-right:44px" oninput="cekMatch()">
+                style="font-size:15px;padding-right:44px" oninput="cekMatch()"
+                autocomplete="new-password">
               <button type="button" onclick="togglePw('pw_konfirm','ico_konfirm')"
                 style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;font-size:18px;line-height:1;color:#94a3b8" id="ico_konfirm">👁</button>
             </div>
