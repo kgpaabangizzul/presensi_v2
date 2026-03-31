@@ -1141,11 +1141,19 @@ def hapus_departemen(did):
 @admin_required
 def atur_shift_departemen(did):
     conn = get_db(); cur = q(conn)
-    cur.execute("DELETE FROM departemen_shift WHERE departemen_id=%s", (did,))
-    for sid in request.form.getlist('shift_ids'):
-        cur.execute("INSERT INTO departemen_shift (departemen_id,shift_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (did, sid))
-    conn.commit(); cur.close(); conn.close()
-    flash('Shift departemen diperbarui!', 'success')
+    try:
+        cur.execute("DELETE FROM departemen_shift WHERE departemen_id=%s", (did,))
+        for sid in request.form.getlist('shift_ids'):
+            try:
+                cur.execute("INSERT INTO departemen_shift (departemen_id,shift_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (did, int(sid)))
+            except (ValueError, TypeError):
+                pass
+        conn.commit()
+        flash('Shift departemen diperbarui!', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash('Gagal memperbarui shift: ' + str(e), 'error')
+    cur.close(); conn.close()
     return redirect(url_for('admin_departemen'))
 
 # ── ADMIN SHIFT ───────────────────────────────────────────────────────────────
@@ -1273,32 +1281,45 @@ def tambah_pegawai():
 def edit_pegawai(uid):
     conn = get_db(); cur = q(conn)
     if request.method == 'POST':
-        dept_id = request.form.get('departemen_id') or None; dept_nama = ''
+        dept_id = int(request.form.get('departemen_id')) if request.form.get('departemen_id') else None
+        dept_nama = ''
         if dept_id:
             cur.execute("SELECT nama FROM departemen WHERE id=%s", (dept_id,))
             d = cur.fetchone()
             if d: dept_nama = d['nama']
+        shift_id = int(request.form.get('shift_id')) if request.form.get('shift_id') else None
         foto_path = None
         if 'foto' in request.files:
             f = request.files['foto']
             if f and f.filename and allowed_file(f.filename):
                 fn = secure_filename(f"user_{uid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{f.filename.rsplit('.',1)[-1].lower()}")
                 f.save(os.path.join(app.config['UPLOAD_FOLDER'], fn)); foto_path = fn
-        fields = ["nik=%s","nip=%s","nama=%s","email=%s","jabatan=%s","departemen=%s","departemen_id=%s",
+        # Cek apakah kolom nip ada di tabel users
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='nip'")
+        has_nip = cur.fetchone() is not None
+        fields = ["nik=%s","nama=%s","email=%s","jabatan=%s","departemen=%s","departemen_id=%s",
                   "shift_id=%s","no_hp=%s","alamat=%s","tanggal_lahir=%s","jenis_kelamin=%s","status=%s","role=%s"]
-        params = [request.form['nik'], request.form.get('nip','').strip(),
+        params = [request.form['nik'],
                   request.form['nama'], request.form['email'],
                   request.form.get('jabatan',''), dept_nama, dept_id,
-                  request.form.get('shift_id') or None, request.form.get('no_hp',''),
+                  shift_id, request.form.get('no_hp',''),
                   request.form.get('alamat',''), request.form.get('tanggal_lahir',''),
                   request.form.get('jenis_kelamin',''), request.form.get('status','active'),
                   request.form.get('role','user')]
+        if has_nip:
+            fields.insert(1, "nip=%s")
+            params.insert(1, request.form.get('nip','').strip())
         if foto_path: fields.append("foto=%s"); params.append(foto_path)
         if request.form.get('password'): fields.append("password=%s"); params.append(generate_password_hash(request.form['password']))
         params.append(uid)
-        cur.execute(f"UPDATE users SET {','.join(fields)} WHERE id=%s", params)
-        conn.commit(); cur.close(); conn.close()
-        flash('Data pegawai diperbarui!', 'success')
+        try:
+            cur.execute(f"UPDATE users SET {','.join(fields)} WHERE id=%s", params)
+            conn.commit()
+            flash('Data pegawai diperbarui!', 'success')
+        except Exception as e:
+            conn.rollback()
+            flash('Gagal memperbarui data: ' + str(e), 'error')
+        cur.close(); conn.close()
         return redirect(url_for('admin_pegawai'))
     cur.execute("""SELECT u.*,d.nama as dept_nama,s.nama as shift_nama
         FROM users u LEFT JOIN departemen d ON u.departemen_id=d.id
