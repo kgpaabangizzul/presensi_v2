@@ -1089,7 +1089,7 @@ def admin_departemen():
     cur.execute("SELECT * FROM departemen_shift")
     dept_shifts = {}
     for ds in cur.fetchall():
-        dept_shifts.setdefault(ds['departemen_id'], []).append(ds['shift_id'])
+        dept_shifts.setdefault(str(ds['departemen_id']), []).append(str(ds['shift_id']))
     cur.close(); conn.close()
     return render_template('admin/departemen.html', depts=depts, shifts=shifts, dept_shifts=dept_shifts)
 
