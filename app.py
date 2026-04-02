@@ -1349,13 +1349,21 @@ def profil():
                 fn = secure_filename(f"user_{uid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{f.filename.rsplit('.',1)[-1].lower()}")
                 f.save(os.path.join(app.config['UPLOAD_FOLDER'], fn))
                 foto_path = fn
+        dept_id = request.form.get('departemen_id') or None
+        # Ambil nama departemen untuk disimpan di kolom departemen (teks)
+        dept_nama = None
+        if dept_id:
+            cur.execute("SELECT nama FROM departemen WHERE id=%s AND aktif=1", (dept_id,))
+            d_row = cur.fetchone()
+            if d_row:
+                dept_nama = d_row['nama']
         if foto_path:
-            cur.execute("UPDATE users SET no_hp=%s,alamat=%s,foto=%s WHERE id=%s",
-                (request.form.get('no_hp',''), request.form.get('alamat',''), foto_path, uid))
+            cur.execute("UPDATE users SET no_hp=%s,alamat=%s,foto=%s,departemen_id=%s,departemen=%s WHERE id=%s",
+                (request.form.get('no_hp',''), request.form.get('alamat',''), foto_path, dept_id, dept_nama, uid))
             session['foto'] = foto_path
         else:
-            cur.execute("UPDATE users SET no_hp=%s,alamat=%s WHERE id=%s",
-                (request.form.get('no_hp',''), request.form.get('alamat',''), uid))
+            cur.execute("UPDATE users SET no_hp=%s,alamat=%s,departemen_id=%s,departemen=%s WHERE id=%s",
+                (request.form.get('no_hp',''), request.form.get('alamat',''), dept_id, dept_nama, uid))
         conn.commit()
         flash('Profil berhasil diperbarui!', 'success')
 
@@ -1364,12 +1372,14 @@ def profil():
         FROM users u LEFT JOIN departemen d ON u.departemen_id=d.id
         LEFT JOIN shift s ON u.shift_id=s.id WHERE u.id=%s""", (uid,))
     user = cur.fetchone()
+    cur.execute("SELECT id, nama FROM departemen WHERE aktif=1 ORDER BY nama")
+    daftar_departemen = cur.fetchall()
     cur.close(); conn.close()
     if not user:
         session.clear()
         flash('Sesi tidak valid, silakan login kembali.', 'warning')
         return redirect(url_for('login'))
-    return render_template('profil.html', user=user)
+    return render_template('profil.html', user=user, daftar_departemen=daftar_departemen)
 
 # ── ADMIN DASHBOARD ───────────────────────────────────────────────────────────
 @app.route('/admin')

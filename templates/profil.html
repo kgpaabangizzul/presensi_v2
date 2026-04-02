@@ -46,6 +46,15 @@
           <input type="file" id="fotoFile" name="foto" accept="image/*" style="display:none" onchange="prvFoto(this)">
         </div>
         <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Departemen</label>
+          <select name="departemen_id" class="input-field" style="font-size:15px">
+            <option value="">— Pilih Departemen —</option>
+            {% for dept in daftar_departemen %}
+              <option value="{{ dept.id }}" {% if user.departemen_id == dept.id %}selected{% endif %}>{{ dept.nama }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
           <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">No. HP</label>
           <input type="tel" name="no_hp" value="{{ user.no_hp or '' }}" class="input-field" placeholder="08xxxxxxxxxx" style="font-size:16px">
         </div>
