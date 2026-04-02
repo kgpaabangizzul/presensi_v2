@@ -3717,6 +3717,12 @@ def admin_test_notif():
     return jsonify(success=False, message=err)
 
 
+# Jalankan init_db saat modul dimuat (termasuk saat dijalankan via Gunicorn)
+with app.app_context():
+    try:
+        init_db()
+    except Exception as _e:
+        print(f"[init_db] warning: {_e}")
+
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True, host='0.0.0.0', port=5030)
