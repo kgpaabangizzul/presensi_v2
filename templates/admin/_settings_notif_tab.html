@@ -1,0 +1,281 @@
+{#
+  ════════════════════════════════════════════════════════════════
+  FILE 1: patch untuk templates/login.html
+  Tambahkan link "Lupa Password?" di bawah tombol Login
+  ════════════════════════════════════════════════════════════════
+#}
+
+{# -- PATCH login.html: tambahkan setelah tombol Submit -- #}
+{% set _LOGIN_PATCH %}
+<!-- Tambahkan di bawah tombol login di login.html -->
+<div class="text-center mt-2">
+  <a href="{{ url_for('lupa_pw.lupa_password') }}"
+     class="text-muted small text-decoration-none"
+     style="hover:color:#2563eb">
+    <i class="fas fa-key me-1"></i>Lupa Password?
+  </a>
+</div>
+{% endset %}
+
+
+{#
+  ════════════════════════════════════════════════════════════════
+  FILE 2: tambahan tab di templates/admin/settings.html
+  Tempel ini sebagai tab baru di halaman pengaturan admin
+  ════════════════════════════════════════════════════════════════
+#}
+
+{% set _SETTINGS_TAB_HEADER %}
+<!-- Tambahkan di nav-tabs settings admin -->
+<li class="nav-item">
+  <a class="nav-link" href="#tab-notif" data-bs-toggle="tab">
+    <i class="fas fa-bell me-1"></i>Notifikasi & OTP
+  </a>
+</li>
+{% endset %}
+
+{% set _SETTINGS_TAB_CONTENT %}
+<!-- Tambahkan di tab-content settings admin -->
+<div class="tab-pane fade" id="tab-notif">
+  <div class="row g-4 mt-1">
+
+    <!-- ── KONFIGURASI EMAIL (SMTP) ── -->
+    <div class="col-12">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">
+          <i class="fas fa-envelope text-primary me-2"></i>Konfigurasi Email (SMTP)
+        </div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('lupa_pw.admin_settings_notif') }}" id="formNotif">
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold small">SMTP Host</label>
+                <input type="text" name="smtp_host" class="form-control"
+                       value="{{ settings.get('smtp_host','') }}"
+                       placeholder="smtp.gmail.com">
+                <div class="form-text">
+                  Gmail: smtp.gmail.com &nbsp;|&nbsp;
+                  Outlook: smtp.office365.com
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-semibold small">Port</label>
+                <input type="number" name="smtp_port" class="form-control"
+                       value="{{ settings.get('smtp_port', 587) }}"
+                       placeholder="587">
+                <div class="form-text">587 (TLS) / 465 (SSL)</div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-semibold small">Enkripsi</label>
+                <select name="smtp_tls" class="form-select">
+                  <option value="true"  {% if settings.get('smtp_tls', True) %}selected{% endif %}>
+                    STARTTLS (port 587)
+                  </option>
+                  <option value="false" {% if not settings.get('smtp_tls', True) %}selected{% endif %}>
+                    SSL (port 465)
+                  </option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold small">Email Pengirim</label>
+                <input type="email" name="smtp_user" class="form-control"
+                       value="{{ settings.get('smtp_user','') }}"
+                       placeholder="notif@perusahaan.com">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold small">
+                  App Password
+                  <a href="https://myaccount.google.com/apppasswords"
+                     target="_blank" class="text-muted small ms-1">
+                    (cara dapat App Password Gmail)
+                  </a>
+                </label>
+                <div class="input-group">
+                  <input type="password" name="smtp_pass" id="smtpPass"
+                         class="form-control"
+                         value="{{ settings.get('smtp_pass','') }}"
+                         placeholder="16 karakter App Password">
+                  <button type="button" class="btn btn-outline-secondary"
+                          onclick="togglePwField('smtpPass',this)">
+                    <i class="fas fa-eye"></i>
+                  </button>
+                </div>
+                <div class="form-text text-warning">
+                  ⚠ Gunakan App Password, bukan password Gmail biasa.
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold small">Nama Pengirim</label>
+                <input type="text" name="smtp_from_name" class="form-control"
+                       value="{{ settings.get('smtp_from_name','Presensi Digital') }}"
+                       placeholder="Presensi Digital">
+              </div>
+            </div>
+
+            <!-- Test kirim email -->
+            <div class="mt-4 p-3 bg-light rounded-3">
+              <div class="fw-semibold small mb-2">
+                <i class="fas fa-vial text-info me-1"></i>Test Kirim OTP Email
+              </div>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                  <input type="email" id="testEmail" class="form-control form-control-sm"
+                         placeholder="Masukkan email tujuan test">
+                </div>
+                <div class="col-auto">
+                  <button type="button" class="btn btn-info btn-sm text-white"
+                          onclick="testKirim('email')">
+                    <i class="fas fa-paper-plane me-1"></i>Test Email
+                  </button>
+                </div>
+                <div class="col-12">
+                  <div id="testEmailResult" class="small"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── KONFIGURASI WHATSAPP ── -->
+            <hr class="my-4">
+            <h6 class="fw-semibold mb-3">
+              <i class="fab fa-whatsapp text-success me-2"></i>
+              WhatsApp via Fonnte
+              <a href="https://fonnte.com" target="_blank"
+                 class="text-muted small fw-normal ms-2">
+                (daftar di fonnte.com)
+              </a>
+            </h6>
+
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label class="form-label fw-semibold small">Token API Fonnte</label>
+                <div class="input-group">
+                  <input type="password" name="fonnte_token" id="fonnteToken"
+                         class="form-control"
+                         value="{{ settings.get('fonnte_token','') }}"
+                         placeholder="Token dari dashboard Fonnte">
+                  <button type="button" class="btn btn-outline-secondary"
+                          onclick="togglePwField('fonnteToken',this)">
+                    <i class="fas fa-eye"></i>
+                  </button>
+                </div>
+                <div class="form-text">
+                  Cara dapat token: Login fonnte.com → Dashboard → salin token device.
+                </div>
+              </div>
+            </div>
+
+            <!-- Test kirim WA -->
+            <div class="mt-3 p-3 bg-light rounded-3">
+              <div class="fw-semibold small mb-2">
+                <i class="fas fa-vial text-info me-1"></i>Test Kirim OTP WhatsApp
+              </div>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                  <input type="tel" id="testWa" class="form-control form-control-sm"
+                         placeholder="08xxxxxxxxxx">
+                </div>
+                <div class="col-auto">
+                  <button type="button" class="btn btn-success btn-sm"
+                          onclick="testKirim('whatsapp')">
+                    <i class="fab fa-whatsapp me-1"></i>Test WA
+                  </button>
+                </div>
+                <div class="col-12">
+                  <div id="testWaResult" class="small"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <button type="submit" class="btn btn-primary fw-semibold">
+                <i class="fas fa-save me-2"></i>Simpan Konfigurasi Notifikasi
+              </button>
+            </div>
+
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PANDUAN ── -->
+    <div class="col-12">
+      <div class="card border-0 border-info border-opacity-25 bg-info bg-opacity-5">
+        <div class="card-body">
+          <h6 class="fw-semibold text-info mb-3">
+            <i class="fas fa-info-circle me-1"></i>Panduan Setup
+          </h6>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <p class="fw-semibold small mb-2">📧 Gmail App Password:</p>
+              <ol class="small text-muted ps-3 mb-0">
+                <li>Aktifkan 2-Factor Authentication di akun Google</li>
+                <li>Buka <a href="https://myaccount.google.com/apppasswords" target="_blank">myaccount.google.com/apppasswords</a></li>
+                <li>Pilih "Mail" → "Other" → beri nama "Presensi"</li>
+                <li>Salin 16-karakter password yang muncul</li>
+                <li>Isi di kolom App Password di atas</li>
+              </ol>
+            </div>
+            <div class="col-md-6">
+              <p class="fw-semibold small mb-2">💬 WhatsApp via Fonnte:</p>
+              <ol class="small text-muted ps-3 mb-0">
+                <li>Daftar di <a href="https://fonnte.com" target="_blank">fonnte.com</a></li>
+                <li>Tambah device → scan QR dengan WhatsApp Anda</li>
+                <li>Salin token dari dashboard</li>
+                <li>Isi di kolom Token API di atas</li>
+                <li>Pastikan WhatsApp yang di-scan selalu online</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endset %}
+
+
+{# ── Script untuk tab settings ── #}
+{% set _SETTINGS_SCRIPT %}
+<script>
+function togglePwField(id, btn) {
+  const el = document.getElementById(id);
+  const hide = el.type === 'password';
+  el.type = hide ? 'text' : 'password';
+  btn.innerHTML = hide
+    ? '<i class="fas fa-eye-slash"></i>'
+    : '<i class="fas fa-eye"></i>';
+}
+
+function testKirim(metode) {
+  const tujuan = metode === 'email'
+    ? document.getElementById('testEmail').value
+    : document.getElementById('testWa').value;
+  const resultEl = document.getElementById(
+    metode === 'email' ? 'testEmailResult' : 'testWaResult'
+  );
+
+  if (!tujuan) {
+    resultEl.innerHTML = '<span class="text-danger">Isi tujuan terlebih dahulu.</span>';
+    return;
+  }
+  resultEl.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Mengirim...</span>';
+
+  const fd = new FormData();
+  fd.append('metode', metode);
+  fd.append('tujuan', tujuan);
+
+  fetch('{{ url_for("lupa_pw.admin_test_notif") }}', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      resultEl.innerHTML = d.success
+        ? `<span class="text-success"><i class="fas fa-check me-1"></i>${d.message}</span>`
+        : `<span class="text-danger"><i class="fas fa-times me-1"></i>${d.message}</span>`;
+    })
+    .catch(() => {
+      resultEl.innerHTML = '<span class="text-danger">Terjadi kesalahan. Coba lagi.</span>';
+    });
+}
+</script>
+{% endset %}

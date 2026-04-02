@@ -2,8 +2,11 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, date, timedelta
-import os, math, json, io
+import os, math, json, io, re, random, string, smtplib, ssl, urllib.request as _urllib_req
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from functools import wraps
+from collections import OrderedDict
 import psycopg2
 import psycopg2.extras
 import openpyxl
@@ -13,8 +16,10 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.units import cm
+from lupa_password import lupa_pw_bp, init_reset_table
 
 app = Flask(__name__)
+app.register_blueprint(lupa_pw_bp)
 app.secret_key = 'absensi-secret-key-2024'
 
 @app.before_request
@@ -58,6 +63,325 @@ def fetchone(cur):
 
 def fetchall(cur):
     return [dict(r) for r in cur.fetchall()]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ██  AUDIT LOG SYSTEM  ████████████████████████████████████████████████████████
+# ══════════════════════════════════════════════════════════════════════════════
+
+AKSI_LABELS = {
+    'LOGIN'         : ('🔐', 'Login'),
+    'LOGOUT'        : ('🚪', 'Logout'),
+    'LOGIN_GAGAL'   : ('❌', 'Login Gagal'),
+    'REGISTER'      : ('📝', 'Registrasi'),
+    'CREATE'        : ('➕', 'Tambah Data'),
+    'UPDATE'        : ('✏️',  'Ubah Data'),
+    'DELETE'        : ('🗑️',  'Hapus Data'),
+    'APPROVE'       : ('✅', 'Setujui'),
+    'REJECT'        : ('🚫', 'Tolak'),
+    'ABSEN_MASUK'   : ('🟢', 'Absen Masuk'),
+    'ABSEN_KELUAR'  : ('🔴', 'Absen Keluar'),
+    'EXPORT'        : ('📥', 'Export Data'),
+    'UPLOAD'        : ('📤', 'Upload File'),
+    'SETTING'       : ('⚙️',  'Ubah Pengaturan'),
+    'VIEW'          : ('👁️',  'Lihat Data'),
+    'PASSWORD'      : ('🔑', 'Ubah Password'),
+    'VALIDASI'      : ('🪪', 'Validasi Akun'),
+    'LUPA_ABSEN'    : ('⏱️',  'Lupa Absen'),
+    'NOTA_DINAS'    : ('📄', 'Nota Dinas'),
+    'SURAT'         : ('📃', 'Surat Perintah'),
+    'IZIN'          : ('📋', 'Izin'),
+    'OTP_KIRIM'     : ('📨', 'Kirim OTP'),
+    'OTP_VERIF'     : ('🔏', 'Verifikasi OTP'),
+    'RESET_PW'      : ('🔑', 'Reset Password'),
+}
+
+MODUL_LABELS = {
+    'auth'          : 'Autentikasi',
+    'absensi'       : 'Absensi',
+    'izin'          : 'Perizinan',
+    'pegawai'       : 'Data Pegawai',
+    'departemen'    : 'Departemen',
+    'shift'         : 'Shift',
+    'settings'      : 'Pengaturan Sistem',
+    'laporan'       : 'Laporan',
+    'nota_dinas'    : 'Nota Dinas',
+    'surat'         : 'Surat Perintah',
+    'dosir'         : 'E-Dosir',
+    'profil'        : 'Profil',
+    'role'          : 'Manajemen Role',
+    'permission'    : 'Hak Akses',
+    'notifikasi'    : 'Notifikasi',
+    'approval'      : 'Approval',
+    'sistem'        : 'Sistem',
+}
+
+
+def _init_audit_table(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id          BIGSERIAL PRIMARY KEY,
+            waktu       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            user_id     INTEGER,
+            user_nama   TEXT,
+            user_role   TEXT,
+            aksi        TEXT NOT NULL,
+            modul       TEXT NOT NULL,
+            deskripsi   TEXT,
+            data_lama   JSONB,
+            data_baru   JSONB,
+            ref_id      INTEGER,
+            ref_table   TEXT,
+            ip_address  TEXT,
+            user_agent  TEXT,
+            status      TEXT DEFAULT 'success',
+            pesan_error TEXT
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_waktu ON audit_log(waktu DESC)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_user  ON audit_log(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_modul ON audit_log(modul)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_aksi  ON audit_log(aksi)")
+
+
+def log_audit(conn, aksi, modul, deskripsi=None,
+              data_lama=None, data_baru=None,
+              ref_id=None, ref_table=None,
+              status='success', pesan_error=None,
+              user_id=None, user_nama=None, user_role=None):
+    """Catat satu baris audit log. Aman dipanggil dari mana saja."""
+    try:
+        if user_id   is None: user_id   = session.get('user_id')
+        if user_nama is None: user_nama = session.get('nama', 'System')
+        if user_role is None: user_role = session.get('role', '-')
+        try:
+            ip = request.headers.get('X-Forwarded-For', request.remote_addr) or '-'
+            ua = (request.user_agent.string or '-')[:300]
+        except RuntimeError:
+            ip, ua = 'system', 'system'
+
+        def _sanitize(d):
+            if not isinstance(d, dict): return d
+            skip = {'password', 'password_hash', 'token', 'secret', 'otp_code'}
+            return {k: '***' if k in skip else v for k, v in d.items()}
+
+        dl = json.dumps(_sanitize(data_lama), default=str) if data_lama else None
+        db_ = json.dumps(_sanitize(data_baru), default=str) if data_baru else None
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO audit_log
+              (user_id,user_nama,user_role,aksi,modul,deskripsi,
+               data_lama,data_baru,ref_id,ref_table,
+               ip_address,user_agent,status,pesan_error)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (user_id, user_nama, user_role,
+              aksi, modul, deskripsi,
+              dl, db_, ref_id, ref_table,
+              ip, ua, status, pesan_error))
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        try: conn.rollback()
+        except Exception: pass
+
+
+def log_error(conn, aksi, modul, pesan_error, deskripsi=None, ref_id=None):
+    log_audit(conn, aksi, modul, deskripsi=deskripsi,
+              ref_id=ref_id, status='error', pesan_error=str(pesan_error))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ██  LUPA PASSWORD — OTP via Email & WhatsApp  ████████████████████████████████
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Konfigurasi Notifikasi ────────────────────────────────────────────────────
+def _get_notif_config(conn=None):
+    cfg = {
+        'smtp_host'      : os.environ.get('SMTP_HOST', ''),
+        'smtp_port'      : int(os.environ.get('SMTP_PORT', 587)),
+        'smtp_user'      : os.environ.get('SMTP_USER', ''),
+        'smtp_pass'      : os.environ.get('SMTP_PASS', ''),
+        'smtp_from_name' : os.environ.get('SMTP_FROM_NAME', 'Presensi Digital'),
+        'smtp_tls'       : os.environ.get('SMTP_TLS', 'true').lower() == 'true',
+        'fonnte_token'   : os.environ.get('FONNTE_TOKEN', ''),
+        'fonnte_url'     : 'https://api.fonnte.com/send',
+        'otp_expire'     : int(os.environ.get('OTP_EXPIRE_MENIT', 10)),
+        'otp_length'     : int(os.environ.get('OTP_LENGTH', 6)),
+        'nama_perusahaan': 'Presensi Digital',
+    }
+    try:
+        _conn = conn or get_db()
+        cur2 = _conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur2.execute("SELECT * FROM settings WHERE id=1")
+        row = cur2.fetchone()
+        if row:
+            cfg['nama_perusahaan'] = row.get('nama_perusahaan', cfg['nama_perusahaan'])
+            for k in ['smtp_host','smtp_port','smtp_user','smtp_pass',
+                      'smtp_from_name','fonnte_token']:
+                if row.get(k): cfg[k] = row[k]
+        cur2.close()
+        if not conn: _conn.close()
+    except Exception: pass
+    return cfg
+
+
+def _init_reset_table(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_otp (
+            id         SERIAL PRIMARY KEY,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            otp_code   TEXT NOT NULL,
+            metode     TEXT NOT NULL DEFAULT 'email',
+            tujuan     TEXT NOT NULL,
+            kadaluarsa TIMESTAMP NOT NULL,
+            digunakan  BOOLEAN DEFAULT FALSE,
+            ip_address TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_otp_user ON password_reset_otp(user_id,digunakan)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_otp_kode ON password_reset_otp(otp_code,digunakan)")
+    for kolom, tipe in [
+        ('smtp_host',      "TEXT DEFAULT ''"),
+        ('smtp_port',      "INTEGER DEFAULT 587"),
+        ('smtp_user',      "TEXT DEFAULT ''"),
+        ('smtp_pass',      "TEXT DEFAULT ''"),
+        ('smtp_from_name', "TEXT DEFAULT 'Presensi Digital'"),
+        ('smtp_tls',       "BOOLEAN DEFAULT TRUE"),
+        ('fonnte_token',   "TEXT DEFAULT ''"),
+    ]:
+        try: cur.execute(f"ALTER TABLE settings ADD COLUMN IF NOT EXISTS {kolom} {tipe}")
+        except Exception: pass
+
+
+def _generate_otp(length=6):
+    return ''.join(random.choices(string.digits, k=length))
+
+
+def _simpan_otp(conn, user_id, otp_code, metode, tujuan, expire_menit=10):
+    cur = conn.cursor()
+    cur.execute("UPDATE password_reset_otp SET digunakan=TRUE WHERE user_id=%s AND digunakan=FALSE", (user_id,))
+    kadaluarsa = datetime.now() + timedelta(minutes=expire_menit)
+    try: ip = request.remote_addr
+    except RuntimeError: ip = 'system'
+    cur.execute("""INSERT INTO password_reset_otp (user_id,otp_code,metode,tujuan,kadaluarsa,ip_address)
+        VALUES (%s,%s,%s,%s,%s,%s)""", (user_id, otp_code, metode, tujuan, kadaluarsa, ip))
+    conn.commit(); cur.close()
+
+
+def _verifikasi_otp(conn, user_id, otp_input):
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT * FROM password_reset_otp
+        WHERE user_id=%s AND otp_code=%s AND digunakan=FALSE AND kadaluarsa>NOW()
+        ORDER BY created_at DESC LIMIT 1""", (user_id, otp_input.strip()))
+    row = cur.fetchone(); cur.close()
+    return dict(row) if row else None
+
+
+def _tandai_otp_digunakan(conn, otp_id):
+    cur = conn.cursor()
+    cur.execute("UPDATE password_reset_otp SET digunakan=TRUE WHERE id=%s", (otp_id,))
+    conn.commit(); cur.close()
+
+
+def _kirim_email_otp(cfg, tujuan_email, nama_user, otp_code):
+    if not cfg['smtp_host'] or not cfg['smtp_user']:
+        return False, "Konfigurasi SMTP belum diisi. Hubungi administrator."
+    subject = f"[{cfg['nama_perusahaan']}] Kode OTP Reset Password"
+    expire  = cfg['otp_expire']
+    html_body = f"""<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:20px">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;
+              box-shadow:0 2px 12px rgba(0,0,0,.08);overflow:hidden">
+    <div style="background:linear-gradient(135deg,#2563eb,#1d4ed8);padding:28px 32px">
+      <h2 style="color:#fff;margin:0;font-size:20px">🔐 Reset Password</h2>
+      <p style="color:rgba(255,255,255,.8);margin:6px 0 0;font-size:13px">{cfg['nama_perusahaan']}</p>
+    </div>
+    <div style="padding:32px">
+      <p style="color:#1e293b;margin:0 0 16px">Halo <strong>{nama_user}</strong>,</p>
+      <p style="color:#475569;font-size:14px;margin:0 0 24px">
+        Kami menerima permintaan reset password. Gunakan kode OTP berikut:
+      </p>
+      <div style="background:#f1f5f9;border:2px dashed #cbd5e1;border-radius:10px;
+                  padding:20px;text-align:center;margin:0 0 24px">
+        <div style="font-size:38px;font-weight:700;letter-spacing:10px;
+                    color:#2563eb;font-family:monospace">{otp_code}</div>
+        <div style="color:#94a3b8;font-size:12px;margin-top:8px">
+          ⏱ Berlaku selama <strong>{expire} menit</strong>
+        </div>
+      </div>
+      <div style="background:#fef9c3;border-left:4px solid #eab308;
+                  padding:12px 16px;border-radius:0 8px 8px 0;margin:0 0 24px">
+        <p style="margin:0;font-size:13px;color:#713f12">
+          ⚠️ <strong>Jangan bagikan kode ini</strong> kepada siapapun.
+          Jika tidak merasa meminta reset, abaikan email ini.
+        </p>
+      </div>
+    </div>
+  </div>
+</body></html>"""
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From']    = f"{cfg['smtp_from_name']} <{cfg['smtp_user']}>"
+        msg['To']      = tujuan_email
+        msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+        port = int(cfg['smtp_port'])
+        if cfg['smtp_tls']:
+            ctx = ssl.create_default_context()
+            with smtplib.SMTP(cfg['smtp_host'], port, timeout=15) as srv:
+                srv.ehlo(); srv.starttls(context=ctx)
+                srv.login(cfg['smtp_user'], cfg['smtp_pass'])
+                srv.sendmail(cfg['smtp_user'], tujuan_email, msg.as_string())
+        else:
+            with smtplib.SMTP_SSL(cfg['smtp_host'], port, timeout=15) as srv:
+                srv.login(cfg['smtp_user'], cfg['smtp_pass'])
+                srv.sendmail(cfg['smtp_user'], tujuan_email, msg.as_string())
+        return True, ''
+    except smtplib.SMTPAuthenticationError:
+        return False, "Autentikasi SMTP gagal. Periksa email & App Password."
+    except Exception as e:
+        return False, f"Gagal kirim email: {str(e)}"
+
+
+def _kirim_wa_otp(cfg, no_hp, nama_user, otp_code):
+    if not cfg['fonnte_token']:
+        return False, "Token Fonnte WhatsApp belum dikonfigurasi. Hubungi administrator."
+    nomor = re.sub(r'\D', '', no_hp)
+    if nomor.startswith('0'): nomor = '62' + nomor[1:]
+    elif not nomor.startswith('62'): nomor = '62' + nomor
+    expire = cfg['otp_expire']
+    pesan = (f"🔐 *Reset Password — {cfg['nama_perusahaan']}*\n\n"
+             f"Halo *{nama_user}*,\n\n"
+             f"Kode OTP reset password Anda:\n\n"
+             f"*{otp_code}*\n\n"
+             f"⏱ Berlaku {expire} menit.\n\n"
+             f"⚠️ Jangan bagikan kode ini kepada siapapun.")
+    try:
+        payload = json.dumps({'target':nomor,'message':pesan,'countryCode':'62'}).encode('utf-8')
+        req = _urllib_req.Request(cfg['fonnte_url'], data=payload,
+            headers={'Authorization':cfg['fonnte_token'],'Content-Type':'application/json'},
+            method='POST')
+        with _urllib_req.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+            if result.get('status') in (True, 'true'): return True, ''
+            return False, f"Fonnte: {result.get('reason') or result.get('message') or str(result)}"
+    except Exception as e:
+        return False, f"Gagal kirim WhatsApp: {str(e)}"
+
+
+def _mask_tujuan(value, metode):
+    if not value: return '***'
+    if metode == 'email':
+        parts = value.split('@')
+        if len(parts) == 2:
+            name, domain = parts
+            return name[:2] + '*'*max(1,len(name)-2) + '@' + domain
+        return value[:3] + '***'
+    digits = re.sub(r'\D', '', value)
+    return digits[:4]+'****'+digits[-3:] if len(digits)>=8 else '****'
+
+
 
 def init_db():
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -579,6 +903,12 @@ Dilaksanakan mulai tanggal {{tanggal}} s.d. selesai.')
                 VALUES (%s,%s,%s,%s,%s) ON CONFLICT (role_kode,modul_kode) DO NOTHING""",
                 (role_kode, kode, nama, grup, aktif))
 
+    # ── AUDIT LOG TABLE ───────────────────────────────────────────
+    _init_audit_table(cur)
+    # ── OTP RESET PASSWORD TABLE ──────────────────────────────────
+    _init_reset_table(cur)
+    # ─────────────────────────────────────────────────────────────
+
     conn.commit()
     cur.close()
     conn.close()
@@ -683,17 +1013,35 @@ def login():
         conn = get_db(); cur = q(conn)
         cur.execute("SELECT * FROM users WHERE email=%s", (request.form.get('email','').strip(),))
         user = cur.fetchone()
-        cur.close(); conn.close()
+        cur.close()
         if user and check_password_hash(user['password'], request.form.get('password','')):
             if user['status'] == 'pending':
                 flash('Akun belum divalidasi admin.', 'warning')
+                log_audit(conn, 'LOGIN_GAGAL', 'auth',
+                    deskripsi=f'Login ditolak — akun pending: {user["email"]}',
+                    ref_id=user['id'], ref_table='users', status='error',
+                    user_id=user['id'], user_nama=user['nama'], user_role=user['role'])
             elif user['status'] == 'rejected':
                 flash('Akun ditolak. Hubungi admin.', 'error')
+                log_audit(conn, 'LOGIN_GAGAL', 'auth',
+                    deskripsi=f'Login ditolak — akun rejected: {user["email"]}',
+                    ref_id=user['id'], ref_table='users', status='error',
+                    user_id=user['id'], user_nama=user['nama'], user_role=user['role'])
             else:
                 session.update({'user_id':user['id'],'nama':user['nama'],'role':user['role'],'foto':user['foto']})
+                log_audit(conn, 'LOGIN', 'auth',
+                    deskripsi=f'Login berhasil: {user["nama"]} ({user["role"]})',
+                    ref_id=user['id'], ref_table='users',
+                    user_id=user['id'], user_nama=user['nama'], user_role=user['role'])
+                conn.close()
                 return redirect(url_for('dashboard'))
         else:
+            email_input = request.form.get('email','')
+            log_audit(conn, 'LOGIN_GAGAL', 'auth',
+                deskripsi=f'Password salah atau email tidak ditemukan: {email_input}',
+                status='error', user_id=None, user_nama=email_input, user_role='-')
             flash('Email atau password salah.', 'error')
+        conn.close()
     return render_template('login.html')
 
 @app.route('/register', methods=['GET','POST'])
@@ -736,7 +1084,12 @@ def register():
 
 @app.route('/logout')
 def logout():
-    session.clear(); return redirect(url_for('login'))
+    if 'user_id' in session:
+        conn = get_db()
+        log_audit(conn, 'LOGOUT', 'auth', deskripsi=f'Logout: {session.get("nama")}')
+        conn.close()
+    session.clear()
+    return redirect(url_for('login'))
 
 # ── USER ──────────────────────────────────────────────────────────────────────
 @app.route('/dashboard')
@@ -862,6 +1215,10 @@ def absen():
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (uid, today, now, foto_path, lat, lng, jarak, shift_id, status))
             conn.commit()
+            log_audit(conn, 'ABSEN_MASUK', 'absensi',
+                deskripsi=f'Absen masuk — {session.get("nama")} | Jarak: {jarak:.0f}m | Status: {status}' if jarak else f'Absen masuk — {session.get("nama")} | Status: {status}',
+                data_baru={'tanggal':today,'jam':now,'jarak':jarak,'shift_id':shift_id,'status':status},
+                ref_id=uid, ref_table='users')
             flash(f'Absen masuk berhasil! Jarak: {jarak:.0f}m' if jarak else 'Absen masuk berhasil!', 'success')
 
     elif tipe == 'keluar':
@@ -875,6 +1232,10 @@ def absen():
             cur.execute("""UPDATE absensi SET jam_keluar=%s,foto_keluar=%s,lat_keluar=%s,lng_keluar=%s,jarak_keluar=%s,shift_id=%s
                 WHERE user_id=%s AND tanggal=%s""", (now, foto_path, lat, lng, jarak, shift_id, uid, today))
             conn.commit()
+            log_audit(conn, 'ABSEN_KELUAR', 'absensi',
+                deskripsi=f'Absen keluar — {session.get("nama")} | Jarak: {jarak:.0f}m' if jarak else f'Absen keluar — {session.get("nama")}',
+                data_baru={'tanggal':today,'jam':now,'jarak':jarak},
+                ref_id=uid, ref_table='users')
             flash('Absen keluar berhasil!', 'success')
 
     cur.close(); conn.close()
@@ -1354,9 +1715,17 @@ def hapus_pegawai(uid):
 @admin_required
 def validasi_user(uid, action):
     conn = get_db(); cur = q(conn)
-    cur.execute("UPDATE users SET status=%s WHERE id=%s",
-        ('active' if action=='approve' else 'rejected', uid))
-    conn.commit(); cur.close(); conn.close()
+    cur.execute("SELECT nama,status FROM users WHERE id=%s", (uid,))
+    target = cur.fetchone()
+    status_lama = target['status'] if target else '-'
+    status_baru = 'active' if action=='approve' else 'rejected'
+    cur.execute("UPDATE users SET status=%s WHERE id=%s", (status_baru, uid))
+    conn.commit()
+    log_audit(conn, 'VALIDASI', 'pegawai',
+        deskripsi=f'Validasi akun {target["nama"] if target else uid}: {status_lama} → {status_baru}',
+        data_lama={'status':status_lama}, data_baru={'status':status_baru},
+        ref_id=uid, ref_table='users')
+    cur.close(); conn.close()
     flash('Akun disetujui!' if action=='approve' else 'Akun ditolak!',
           'success' if action=='approve' else 'info')
     return redirect(url_for('admin_pegawai'))
@@ -1437,6 +1806,12 @@ def proses_izin(iid, action):
         else:
             flash('Izin ditolak!', 'info')
 
+        log_audit(conn,
+            'APPROVE' if action=='approve' else 'REJECT', 'izin',
+            deskripsi=f'{"Setujui" if action=="approve" else "Tolak"} izin ID {iid} — {iz["jenis"]} milik user_id {iz["user_id"]}',
+            data_lama={'status':'pending'},
+            data_baru={'status':'approved' if action=="approve" else 'rejected'},
+            ref_id=iid, ref_table='izin')
         conn.commit()
     cur.close(); conn.close()
     return redirect(url_for('admin_izin'))
@@ -1467,6 +1842,9 @@ def admin_laporan():
 @admin_required
 def export_excel():
     bulan = request.args.get('bulan', date.today().strftime('%Y-%m'))
+    conn = get_db()
+    log_audit(conn, 'EXPORT', 'laporan', deskripsi=f'Export Excel laporan bulan {bulan}')
+    conn.close()
     conn = get_db(); cur = q(conn)
     cur.execute("""SELECT a.tanggal,u.nik,u.nama,u.departemen,u.jabatan,a.jam_masuk,a.jam_keluar,
         a.jarak_masuk,a.status,a.keterangan,s.nama as shift_nama
@@ -1593,7 +1971,13 @@ def admin_settings():
                 (request.form['nama_perusahaan'],
                  float(request.form['office_lat']), float(request.form['office_lng']),
                  int(request.form['max_distance'])))
-        conn.commit(); flash('Settings disimpan!', 'success')
+        conn.commit()
+        log_audit(conn, 'SETTING', 'settings', deskripsi='Update pengaturan sistem',
+            data_baru={'nama_perusahaan':request.form.get('nama_perusahaan'),
+                       'office_lat':request.form.get('office_lat'),
+                       'office_lng':request.form.get('office_lng'),
+                       'max_distance':request.form.get('max_distance')})
+        flash('Settings disimpan!', 'success')
     cur.execute("SELECT * FROM settings WHERE id=1")
     settings = cur.fetchone()
     cur.close(); conn.close()
@@ -1649,7 +2033,11 @@ def ubah_password():
         cur.close(); conn.close()
         return redirect(url_for('profil'))
     cur.execute("UPDATE users SET password=%s WHERE id=%s", (generate_password_hash(pw_baru), uid))
-    conn.commit(); cur.close(); conn.close()
+    conn.commit()
+    log_audit(conn, 'PASSWORD', 'profil',
+        deskripsi=f'Ubah password: {session.get("nama")}',
+        ref_id=uid, ref_table='users')
+    cur.close(); conn.close()
     flash('Password berhasil diubah!', 'success')
     return redirect(url_for('profil'))
 
@@ -2981,6 +3369,353 @@ def admin_role_permission_preset(role_kode):
     cur.execute("UPDATE role_permission SET aktif=%s WHERE role_kode=%s", (aktif, role_kode))
     conn.commit(); cur.close(); conn.close()
     return jsonify({'ok': True})
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ██  ROUTE — AUDIT LOG  ███████████████████████████████████████████████████████
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/admin/audit-log')
+@admin_required
+def audit_log_index():
+    conn = get_db(); cur = q(conn)
+    page      = request.args.get('page', 1, type=int)
+    per_page  = min(request.args.get('per_page', 50, type=int), 200)
+    offset    = (page - 1) * per_page
+    aksi      = request.args.get('aksi', '')
+    modul     = request.args.get('modul', '')
+    user_id_f = request.args.get('user_id', '')
+    status_f  = request.args.get('status', '')
+    tgl_dari  = request.args.get('tgl_dari', '')
+    tgl_sampai= request.args.get('tgl_sampai', '')
+    cari      = request.args.get('cari', '')
+
+    conditions, params = [], []
+    if aksi:       conditions.append("aksi=%s");            params.append(aksi)
+    if modul:      conditions.append("modul=%s");           params.append(modul)
+    if user_id_f and user_id_f.isdigit():
+                   conditions.append("user_id=%s");         params.append(int(user_id_f))
+    if status_f:   conditions.append("status=%s");          params.append(status_f)
+    if tgl_dari:   conditions.append("waktu::date>=%s");    params.append(tgl_dari)
+    if tgl_sampai: conditions.append("waktu::date<=%s");    params.append(tgl_sampai)
+    if cari:
+        conditions.append("(deskripsi ILIKE %s OR user_nama ILIKE %s OR pesan_error ILIKE %s)")
+        like = f'%{cari}%'; params += [like,like,like]
+
+    where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
+    cur.execute(f"SELECT COUNT(*) as c FROM audit_log {where}", params)
+    total = cur.fetchone()['c']
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    cur.execute(f"""SELECT al.* FROM audit_log al
+        {where} ORDER BY al.waktu DESC LIMIT %s OFFSET %s""",
+        params + [per_page, offset])
+    logs = cur.fetchall()
+
+    cur.execute("""SELECT
+        COUNT(*) FILTER (WHERE status='success') as sukses,
+        COUNT(*) FILTER (WHERE status='error')   as error,
+        COUNT(DISTINCT user_id)                  as user_aktif,
+        COUNT(*) FILTER (WHERE aksi='LOGIN')     as total_login,
+        COUNT(*) FILTER (WHERE aksi='LOGIN_GAGAL') as login_gagal,
+        COUNT(*) FILTER (WHERE aksi IN ('CREATE','UPDATE','DELETE')) as mutasi
+        FROM audit_log WHERE waktu >= NOW() - INTERVAL '24 hours'""")
+    stats = cur.fetchone()
+
+    cur.execute("""SELECT date_trunc('hour',waktu) as jam, COUNT(*) as jumlah
+        FROM audit_log WHERE waktu >= NOW() - INTERVAL '12 hours'
+        GROUP BY jam ORDER BY jam""")
+    aktivitas_per_jam = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("""SELECT user_nama, user_role, COUNT(*) as aksi_count
+        FROM audit_log WHERE waktu::date=CURRENT_DATE AND user_id IS NOT NULL
+        GROUP BY user_nama, user_role ORDER BY aksi_count DESC LIMIT 10""")
+    top_users = cur.fetchall()
+
+    cur.execute("""SELECT DISTINCT user_id, user_nama, user_role
+        FROM audit_log WHERE user_id IS NOT NULL ORDER BY user_nama LIMIT 100""")
+    daftar_user = cur.fetchall()
+
+    cur.close(); conn.close()
+    return render_template('admin/audit_log.html',
+        logs=logs, stats=stats, aktivitas_per_jam=aktivitas_per_jam,
+        top_users=top_users, daftar_user=daftar_user,
+        total=total, total_pages=total_pages, page=page, per_page=per_page,
+        aksi=aksi, modul=modul, user_id=user_id_f,
+        status=status_f, tgl_dari=tgl_dari, tgl_sampai=tgl_sampai, cari=cari,
+        AKSI_LABELS=AKSI_LABELS, MODUL_LABELS=MODUL_LABELS)
+
+
+@app.route('/admin/audit-log/detail/<int:log_id>')
+@admin_required
+def audit_log_detail(log_id):
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT * FROM audit_log WHERE id=%s", (log_id,))
+    log = cur.fetchone()
+    cur.close(); conn.close()
+    if not log:
+        flash('Log tidak ditemukan.', 'error')
+        return redirect(url_for('audit_log_index'))
+    return render_template('admin/audit_log_detail.html',
+        log=dict(log), AKSI_LABELS=AKSI_LABELS, MODUL_LABELS=MODUL_LABELS)
+
+
+@app.route('/admin/audit-log/api-stats')
+@admin_required
+def audit_log_api_stats():
+    jam = request.args.get('jam', 24, type=int)
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT date_trunc('hour',waktu) as jam,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE status='error') as error
+        FROM audit_log WHERE waktu >= NOW() - INTERVAL '%s hours'
+        GROUP BY jam ORDER BY jam""", (jam,))
+    per_jam = [dict(r) for r in cur.fetchall()]
+    cur.execute("""SELECT aksi, COUNT(*) as jumlah FROM audit_log
+        WHERE waktu >= NOW() - INTERVAL '24 hours'
+        GROUP BY aksi ORDER BY jumlah DESC LIMIT 10""")
+    per_aksi = [dict(r) for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return jsonify(per_jam=per_jam, per_aksi=per_aksi)
+
+
+@app.route('/admin/audit-log/export')
+@admin_required
+def audit_log_export():
+    import csv
+    tgl_dari   = request.args.get('tgl_dari',   '').strip() or (date.today()-timedelta(days=30)).isoformat()
+    tgl_sampai = request.args.get('tgl_sampai', '').strip() or date.today().isoformat()
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT waktu,user_nama,user_role,aksi,modul,deskripsi,
+        ref_id,ref_table,ip_address,status,pesan_error
+        FROM audit_log WHERE waktu::date BETWEEN %s AND %s ORDER BY waktu DESC""",
+        (tgl_dari, tgl_sampai))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Waktu','User','Role','Aksi','Modul','Deskripsi',
+                     'Ref ID','Ref Table','IP Address','Status','Error'])
+    for r in rows:
+        writer.writerow([r['waktu'],r['user_nama'],r['user_role'],
+            r['aksi'],r['modul'],r['deskripsi'],r['ref_id'],r['ref_table'],
+            r['ip_address'],r['status'],r['pesan_error']])
+    from flask import Response
+    return Response('\ufeff'+output.getvalue(), mimetype='text/csv',
+        headers={'Content-Disposition':f'attachment; filename=audit_log_{tgl_dari}_{tgl_sampai}.csv'})
+
+
+@app.route('/admin/audit-log/purge', methods=['POST'])
+@admin_required
+def audit_log_purge():
+    hari = max(request.form.get('hari', 90, type=int), 7)
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("DELETE FROM audit_log WHERE waktu < NOW() - INTERVAL '%s days'", (hari,))
+    deleted = cur.rowcount; conn.commit(); cur.close()
+    log_audit(conn, 'DELETE', 'sistem',
+        deskripsi=f'Purge audit log > {hari} hari — {deleted} baris dihapus')
+    conn.close()
+    flash(f'Berhasil menghapus {deleted} baris log lama (>{hari} hari).', 'success')
+    return redirect(url_for('audit_log_index'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ██  ROUTE — LUPA PASSWORD  ███████████████████████████████████████████████████
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/lupa-password', methods=['GET','POST'])
+def lupa_password():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    if request.method == 'GET':
+        return render_template('lupa_password.html', step='input')
+
+    identitas = request.form.get('identitas', '').strip()
+    metode    = request.form.get('metode', 'email')
+    if not identitas:
+        flash('Masukkan email atau nomor WhatsApp Anda.', 'error')
+        return render_template('lupa_password.html', step='input')
+
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT id,nama,email,no_hp,status FROM users
+        WHERE email=%s OR no_hp=%s LIMIT 1""", (identitas, identitas))
+    user = cur.fetchone()
+
+    if not user:
+        cur.close(); conn.close()
+        log_audit(conn, 'OTP_KIRIM', 'auth',
+            deskripsi=f'Lupa password — akun tidak ditemukan: {identitas}',
+            status='error', user_id=None, user_nama=identitas, user_role='-')
+        flash('Jika akun dengan data tersebut ada, OTP akan dikirimkan segera.', 'info')
+        return render_template('lupa_password.html', step='input')
+
+    if user['status'] in ('pending','rejected'):
+        cur.close(); conn.close()
+        flash('Akun belum aktif. Hubungi administrator.', 'warning')
+        return render_template('lupa_password.html', step='input')
+
+    user = dict(user)
+    cfg  = _get_notif_config(conn)
+    if metode == 'whatsapp':
+        tujuan = user.get('no_hp') or ''
+        if not tujuan:
+            cur.close(); conn.close()
+            flash('Nomor WhatsApp tidak terdaftar pada akun ini. Coba via Email.', 'warning')
+            return render_template('lupa_password.html', step='input')
+    else:
+        metode = 'email'
+        tujuan = user.get('email') or ''
+
+    otp = _generate_otp(cfg['otp_length'])
+    _simpan_otp(conn, user['id'], otp, metode, tujuan, cfg['otp_expire'])
+    cur.close()
+
+    ok, err_msg = (_kirim_email_otp if metode=='email' else _kirim_wa_otp)(cfg, tujuan, user['nama'], otp)
+    if not ok:
+        conn.close()
+        log_audit(conn, 'OTP_KIRIM', 'auth',
+            deskripsi=f'Gagal kirim OTP {metode}: {err_msg}',
+            status='error', ref_id=user['id'], ref_table='users')
+        flash(f'Gagal mengirim OTP: {err_msg}', 'error')
+        return render_template('lupa_password.html', step='input')
+
+    log_audit(conn, 'OTP_KIRIM', 'auth',
+        deskripsi=f'Kirim OTP {metode} ke {_mask_tujuan(tujuan, metode)}',
+        ref_id=user['id'], ref_table='users',
+        user_id=user['id'], user_nama=user['nama'], user_role='-')
+    conn.close()
+
+    session['reset_user_id']  = user['id']
+    session['reset_metode']   = metode
+    session['reset_tujuan']   = _mask_tujuan(tujuan, metode)
+    session['reset_ts']       = datetime.now().isoformat()
+    flash(f'OTP telah dikirim ke {_mask_tujuan(tujuan, metode)}.', 'success')
+    return render_template('lupa_password.html', step='otp',
+        metode=metode, tujuan=_mask_tujuan(tujuan, metode), expire=cfg['otp_expire'])
+
+
+@app.route('/lupa-password/verifikasi', methods=['POST'])
+def verifikasi_otp():
+    user_id = session.get('reset_user_id')
+    if not user_id:
+        flash('Sesi reset telah berakhir. Mulai ulang.', 'error')
+        return redirect(url_for('lupa_password'))
+    otp_input = request.form.get('otp', '').strip()
+    if len(otp_input) < 4:
+        flash('Kode OTP tidak valid.', 'error')
+        return render_template('lupa_password.html', step='otp',
+            metode=session.get('reset_metode'), tujuan=session.get('reset_tujuan'))
+    conn = get_db()
+    row  = _verifikasi_otp(conn, user_id, otp_input)
+    if not row:
+        log_audit(conn, 'OTP_VERIF', 'auth',
+            deskripsi=f'OTP salah/kadaluarsa untuk user_id {user_id}',
+            status='error', ref_id=user_id, ref_table='users')
+        conn.close()
+        flash('Kode OTP salah atau sudah kadaluarsa. Coba kirim ulang.', 'error')
+        return render_template('lupa_password.html', step='otp',
+            metode=session.get('reset_metode'), tujuan=session.get('reset_tujuan'))
+    log_audit(conn, 'OTP_VERIF', 'auth',
+        deskripsi=f'OTP berhasil diverifikasi untuk user_id {user_id}',
+        ref_id=user_id, ref_table='users')
+    conn.close()
+    session['reset_otp_id']   = row['id']
+    session['reset_verified'] = True
+    return render_template('lupa_password.html', step='reset')
+
+
+@app.route('/lupa-password/reset', methods=['POST'])
+def reset_password():
+    user_id  = session.get('reset_user_id')
+    otp_id   = session.get('reset_otp_id')
+    verified = session.get('reset_verified')
+    if not (user_id and otp_id and verified):
+        flash('Sesi reset tidak valid. Mulai ulang.', 'error')
+        return redirect(url_for('lupa_password'))
+    pw_baru    = request.form.get('password_baru', '')
+    pw_konfirm = request.form.get('password_konfirm', '')
+    if len(pw_baru) < 6:
+        flash('Password minimal 6 karakter.', 'error')
+        return render_template('lupa_password.html', step='reset')
+    if pw_baru != pw_konfirm:
+        flash('Konfirmasi password tidak cocok.', 'error')
+        return render_template('lupa_password.html', step='reset')
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("UPDATE users SET password=%s WHERE id=%s",
+        (generate_password_hash(pw_baru), user_id))
+    conn.commit()
+    _tandai_otp_digunakan(conn, otp_id)
+    log_audit(conn, 'RESET_PW', 'auth',
+        deskripsi=f'Password berhasil direset untuk user_id {user_id}',
+        ref_id=user_id, ref_table='users')
+    cur.close(); conn.close()
+    for k in ['reset_user_id','reset_otp_id','reset_verified',
+              'reset_metode','reset_tujuan','reset_ts']:
+        session.pop(k, None)
+    flash('Password berhasil direset! Silakan login dengan password baru Anda.', 'success')
+    return redirect(url_for('login'))
+
+
+@app.route('/lupa-password/kirim-ulang', methods=['POST'])
+def kirim_ulang_otp():
+    user_id = session.get('reset_user_id')
+    metode  = session.get('reset_metode', 'email')
+    if not user_id:
+        return jsonify(success=False, message='Sesi tidak valid.')
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT nama,email,no_hp FROM users WHERE id=%s", (user_id,))
+    user = cur.fetchone()
+    if not user: cur.close(); conn.close(); return jsonify(success=False, message='User tidak ditemukan.')
+    user = dict(user)
+    cfg  = _get_notif_config(conn)
+    tujuan = user.get('no_hp') if metode=='whatsapp' else user.get('email')
+    otp = _generate_otp(cfg['otp_length'])
+    _simpan_otp(conn, user_id, otp, metode, tujuan, cfg['otp_expire'])
+    ok, err = (_kirim_email_otp if metode=='email' else _kirim_wa_otp)(cfg, tujuan, user['nama'], otp)
+    log_audit(conn, 'OTP_KIRIM', 'auth',
+        deskripsi=f'Kirim ulang OTP {metode} — {"sukses" if ok else "gagal: "+err}',
+        ref_id=user_id, ref_table='users', status='success' if ok else 'error')
+    cur.close(); conn.close()
+    if ok: return jsonify(success=True, message=f'OTP baru dikirim ke {_mask_tujuan(tujuan,metode)}.')
+    return jsonify(success=False, message=f'Gagal kirim ulang: {err}')
+
+
+@app.route('/admin/settings/notif', methods=['POST'])
+@admin_required
+def admin_settings_notif():
+    conn = get_db(); cur = conn.cursor()
+    try:
+        cur.execute("""UPDATE settings SET
+            smtp_host=%s, smtp_port=%s, smtp_user=%s, smtp_pass=%s,
+            smtp_from_name=%s, smtp_tls=%s, fonnte_token=%s WHERE id=1""",
+            (request.form.get('smtp_host','').strip(),
+             int(request.form.get('smtp_port',587) or 587),
+             request.form.get('smtp_user','').strip(),
+             request.form.get('smtp_pass','').strip(),
+             request.form.get('smtp_from_name','Presensi Digital').strip(),
+             request.form.get('smtp_tls','true')=='true',
+             request.form.get('fonnte_token','').strip()))
+        conn.commit()
+        log_audit(conn, 'SETTING', 'settings', deskripsi='Update konfigurasi SMTP & WhatsApp')
+        flash('Konfigurasi notifikasi berhasil disimpan!', 'success')
+    except Exception as e:
+        conn.rollback(); flash(f'Gagal menyimpan: {e}', 'error')
+    finally:
+        cur.close(); conn.close()
+    return redirect(url_for('admin_settings'))
+
+
+@app.route('/admin/test-notif', methods=['POST'])
+@admin_required
+def admin_test_notif():
+    metode = request.form.get('metode', 'email')
+    tujuan = request.form.get('tujuan', '').strip()
+    if not tujuan: return jsonify(success=False, message='Tujuan tidak boleh kosong')
+    conn = get_db(); cfg = _get_notif_config(conn); conn.close()
+    otp = _generate_otp(cfg['otp_length'])
+    nama = session.get('nama', 'Admin')
+    ok, err = (_kirim_email_otp if metode=='email' else _kirim_wa_otp)(cfg, tujuan, nama, otp)
+    if ok: return jsonify(success=True, message=f'Test OTP ({otp}) berhasil dikirim ke {tujuan}')
+    return jsonify(success=False, message=err)
+
 
 if __name__ == '__main__':
     init_db()

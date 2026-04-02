@@ -1,0 +1,409 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+  {# ── HEADER ── #}
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <p class="text-sm text-slate-500 mt-0.5">Rekam jejak seluruh aktivitas sistem</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="{{ url_for('audit_log_export', tgl_dari=tgl_dari or '', tgl_sampai=tgl_sampai or '') }}"
+         class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-semibold hover:bg-emerald-50 transition-colors">
+        <svg style="width:14px;height:14px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Export CSV
+      </a>
+      <button onclick="document.getElementById('purgeModal').classList.remove('hidden')"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors">
+        <svg style="width:14px;height:14px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        Bersihkan Log
+      </button>
+    </div>
+  </div>
+
+  {# ── STAT CARDS ── #}
+  <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+    {% set cards = [
+      ('Sukses',      stats.sukses,      'text-emerald-600','bg-emerald-50','border-emerald-200','✅'),
+      ('Error',       stats.error,       'text-red-600',    'bg-red-50',    'border-red-200',    '❌'),
+      ('User Aktif',  stats.user_aktif,  'text-blue-600',   'bg-blue-50',   'border-blue-200',   '👥'),
+      ('Login OK',    stats.total_login, 'text-violet-600', 'bg-violet-50', 'border-violet-200', '🔑'),
+      ('Login Gagal', stats.login_gagal, 'text-amber-600',  'bg-amber-50',  'border-amber-200',  '⚠️'),
+      ('Mutasi Data', stats.mutasi,      'text-slate-600',  'bg-slate-50',  'border-slate-200',  '🗄️'),
+    ] %}
+    {% for label, val, color, bg, border, icon in cards %}
+    <div class="bg-white rounded-xl border {{ border }} p-4 shadow-sm">
+      <div class="flex items-start justify-between mb-2">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-wide">{{ label }}</p>
+        <span class="text-base">{{ icon }}</span>
+      </div>
+      <p class="text-3xl font-bold {{ color }}">{{ val or 0 }}</p>
+      <p class="text-xs text-slate-400 mt-1">24 jam terakhir</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── CHART + TOP USER ── #}
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">📊 Aktivitas 12 Jam Terakhir</p>
+      <canvas id="chartPerJam" height="100"></canvas>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">🏆 Top User Hari Ini</p>
+      <div class="space-y-2">
+        {% for u in top_users %}
+        <div class="flex items-center gap-3 py-1.5 border-b border-slate-50 last:border-0">
+          <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+            {{ u.user_nama[0]|upper if u.user_nama else '?' }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-slate-800 truncate">{{ u.user_nama or '-' }}</p>
+            <p class="text-xs text-slate-400">{{ u.user_role }}</p>
+          </div>
+          <span class="text-xs font-bold bg-blue-100 text-blue-700 rounded-full px-2.5 py-0.5">{{ u.aksi_count }}</span>
+        </div>
+        {% else %}
+        <div class="text-center py-8 text-slate-400">
+          <p class="text-3xl mb-1">📭</p>
+          <p class="text-xs">Belum ada aktivitas hari ini</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# ── FILTER ── #}
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+    <form method="get" action="{{ url_for('audit_log_index') }}" id="filterForm">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-3">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Aksi</label>
+          <select name="aksi" onchange="this.form.submit()"
+                  class="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+            <option value="">Semua Aksi</option>
+            {% for kode, (icon, label) in AKSI_LABELS.items() %}
+            <option value="{{ kode }}" {% if aksi==kode %}selected{% endif %}>{{ icon }} {{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Modul</label>
+          <select name="modul" onchange="this.form.submit()"
+                  class="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+            <option value="">Semua Modul</option>
+            {% for kode, label in MODUL_LABELS.items() %}
+            <option value="{{ kode }}" {% if modul==kode %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Status</label>
+          <select name="status" onchange="this.form.submit()"
+                  class="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+            <option value="">Semua</option>
+            <option value="success" {% if status=='success' %}selected{% endif %}>✅ Sukses</option>
+            <option value="error"   {% if status=='error'   %}selected{% endif %}>❌ Error</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">User</label>
+          <select name="user_id" onchange="this.form.submit()"
+                  class="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+            <option value="">Semua User</option>
+            {% for u in daftar_user %}
+            <option value="{{ u.user_id }}" {% if user_id|string == u.user_id|string %}selected{% endif %}>{{ u.user_nama }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Dari</label>
+          <input type="date" name="tgl_dari" value="{{ tgl_dari }}" onchange="this.form.submit()"
+                 class="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Sampai</label>
+          <input type="date" name="tgl_sampai" value="{{ tgl_sampai }}" onchange="this.form.submit()"
+                 class="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300">
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex flex-1 min-w-0" style="max-width:400px">
+          <span class="flex items-center px-2.5 bg-slate-50 border border-r-0 border-slate-200 rounded-l-lg">
+            <svg style="width:13px;height:13px;color:#94a3b8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          </span>
+          <input type="text" name="cari" value="{{ cari }}" placeholder="Cari deskripsi, nama user, IP..."
+                 class="flex-1 text-sm border border-slate-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 min-w-0">
+          <button type="submit"
+                  class="px-4 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-r-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
+            Cari
+          </button>
+        </div>
+        {% if aksi or modul or status or user_id or tgl_dari or tgl_sampai or cari %}
+        <a href="{{ url_for('audit_log_index') }}"
+           class="flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          Reset
+        </a>
+        {% endif %}
+        <span class="text-xs text-slate-400 ml-auto">
+          <strong class="text-slate-700">{{ logs|length }}</strong> dari <strong class="text-slate-700">{{ total }}</strong> log
+        </span>
+      </div>
+    </form>
+  </div>
+
+  {# ── TABEL ── #}
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-100 bg-slate-50">
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-32">Waktu</th>
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-40">User</th>
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-28">Aksi</th>
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-28">Modul</th>
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Deskripsi</th>
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-28">IP Address</th>
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-20">Status</th>
+            <th class="px-4 py-3 w-12"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          {% for log in logs %}
+          {% set is_error = log.status == 'error' %}
+          <tr class="hover:bg-slate-50 transition-colors cursor-pointer {{ 'bg-red-50 hover:bg-red-100' if is_error else '' }}"
+              onclick="window.location='{{ url_for('audit_log_detail', log_id=log.id) }}'">
+
+            {# Waktu #}
+            <td class="px-4 py-3">
+              <p class="text-xs text-slate-400">{{ log.waktu.strftime('%d/%m/%Y') }}</p>
+              <p class="font-semibold text-slate-700 tabular-nums">{{ log.waktu.strftime('%H:%M:%S') }}</p>
+            </td>
+
+            {# User #}
+            <td class="px-4 py-3">
+              {% if log.user_nama %}
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  {{ log.user_nama[0]|upper }}
+                </div>
+                <div class="min-w-0">
+                  <p class="font-semibold text-slate-800 truncate" style="max-width:100px">{{ log.user_nama }}</p>
+                  <p class="text-xs text-slate-400">{{ log.user_role or '' }}</p>
+                </div>
+              </div>
+              {% else %}
+              <span class="text-xs text-slate-400 italic">System</span>
+              {% endif %}
+            </td>
+
+            {# Aksi #}
+            <td class="px-4 py-3">
+              {% set aksi_info = AKSI_LABELS.get(log.aksi, ('🔹', log.aksi)) %}
+              {% set aksi_cls = {
+                'LOGIN':        'bg-emerald-100 text-emerald-700',
+                'LOGOUT':       'bg-slate-100 text-slate-600',
+                'LOGIN_GAGAL':  'bg-red-100 text-red-700',
+                'REGISTER':     'bg-cyan-100 text-cyan-700',
+                'CREATE':       'bg-emerald-100 text-emerald-700',
+                'UPDATE':       'bg-amber-100 text-amber-700',
+                'DELETE':       'bg-red-100 text-red-700',
+                'APPROVE':      'bg-emerald-100 text-emerald-700',
+                'REJECT':       'bg-red-100 text-red-700',
+                'ABSEN_MASUK':  'bg-emerald-100 text-emerald-700',
+                'ABSEN_KELUAR': 'bg-orange-100 text-orange-700',
+                'EXPORT':       'bg-cyan-100 text-cyan-700',
+                'SETTING':      'bg-violet-100 text-violet-700',
+                'PASSWORD':     'bg-amber-100 text-amber-700',
+                'VALIDASI':     'bg-blue-100 text-blue-700',
+                'IZIN':         'bg-cyan-100 text-cyan-700',
+              } %}
+              {% set cls = aksi_cls.get(log.aksi, 'bg-slate-100 text-slate-600') %}
+              <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {{ cls }} whitespace-nowrap">
+                {{ aksi_info[0] }} {{ aksi_info[1] }}
+              </span>
+            </td>
+
+            {# Modul #}
+            <td class="px-4 py-3">
+              <span class="text-xs text-slate-500">{{ MODUL_LABELS.get(log.modul, log.modul) }}</span>
+            </td>
+
+            {# Deskripsi #}
+            <td class="px-4 py-3" style="max-width:240px">
+              <p class="text-sm text-slate-700 truncate" title="{{ log.deskripsi or '' }}">{{ log.deskripsi or '-' }}</p>
+              {% if log.pesan_error %}
+              <p class="text-xs text-red-500 truncate mt-0.5" title="{{ log.pesan_error }}">
+                ⚠ {{ log.pesan_error }}
+              </p>
+              {% endif %}
+            </td>
+
+            {# IP #}
+            <td class="px-4 py-3">
+              <code class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded">{{ log.ip_address or '-' }}</code>
+            </td>
+
+            {# Status #}
+            <td class="px-4 py-3">
+              {% if is_error %}
+              <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                ❌ Error
+              </span>
+              {% else %}
+              <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                ✅ OK
+              </span>
+              {% endif %}
+            </td>
+
+            {# Detail Button #}
+            <td class="px-3 py-3">
+              <a href="{{ url_for('audit_log_detail', log_id=log.id) }}"
+                 onclick="event.stopPropagation()"
+                 class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                 title="Lihat detail">
+                <svg style="width:14px;height:14px;color:#64748b" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+              </a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center py-16 text-slate-400">
+              <p class="text-4xl mb-2">🔍</p>
+              <p class="text-sm">Tidak ada log yang sesuai filter</p>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# ── PAGINASI ── #}
+    {% if total_pages > 1 %}
+    <div class="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+      <p class="text-xs text-slate-500">
+        Halaman <strong>{{ page }}</strong> dari <strong>{{ total_pages }}</strong>
+        &nbsp;·&nbsp; {{ total }} log
+      </p>
+      <div class="flex items-center gap-1">
+        <a href="{{ url_for('audit_log_index', page=page-1, aksi=aksi, modul=modul, user_id=user_id, status=status, tgl_dari=tgl_dari, tgl_sampai=tgl_sampai, cari=cari) }}"
+           class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-white transition-colors {{ 'opacity-40 pointer-events-none' if page==1 else '' }}">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        </a>
+        {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+        <a href="{{ url_for('audit_log_index', page=p, aksi=aksi, modul=modul, user_id=user_id, status=status, tgl_dari=tgl_dari, tgl_sampai=tgl_sampai, cari=cari) }}"
+           class="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold transition-colors
+                  {{ 'bg-blue-600 text-white border border-blue-600' if p==page else 'border border-slate-200 text-slate-600 hover:bg-white' }}">
+          {{ p }}
+        </a>
+        {% endfor %}
+        <a href="{{ url_for('audit_log_index', page=page+1, aksi=aksi, modul=modul, user_id=user_id, status=status, tgl_dari=tgl_dari, tgl_sampai=tgl_sampai, cari=cari) }}"
+           class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-white transition-colors {{ 'opacity-40 pointer-events-none' if page==total_pages else '' }}">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>{# end space-y-5 #}
+
+{# ── MODAL PURGE ── #}
+<div id="purgeModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black bg-opacity-40" onclick="document.getElementById('purgeModal').classList.add('hidden')"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+    <div class="w-11 h-11 bg-red-100 rounded-xl flex items-center justify-center mb-4">
+      <svg style="width:20px;height:20px;color:#dc2626" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+      </svg>
+    </div>
+    <h3 class="text-base font-bold text-slate-800 mb-1">Bersihkan Log Lama</h3>
+    <p class="text-sm text-slate-500 mb-5">Hapus log berdasarkan usia. Aksi ini <strong>tidak bisa dibatalkan</strong>.</p>
+    <form method="post" action="{{ url_for('audit_log_purge') }}">
+      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Hapus log lebih dari:</label>
+      <div class="flex items-center gap-2 mb-5">
+        <input type="number" name="hari" value="90" min="7" max="3650"
+               class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300">
+        <span class="text-sm text-slate-500 whitespace-nowrap">hari yang lalu</span>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" onclick="document.getElementById('purgeModal').classList.add('hidden')"
+                class="flex-1 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+          Batal
+        </button>
+        <button type="submit" onclick="return confirm('Yakin ingin menghapus log lama?')"
+                class="flex-1 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">
+          Hapus Sekarang
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const rawData = {{ aktivitas_per_jam | tojson }};
+const labels = rawData.map(d => {
+  const dt = new Date(d.jam);
+  return dt.getHours().toString().padStart(2,'0') + ':00';
+});
+const values = rawData.map(d => d.jumlah);
+
+const ctx = document.getElementById('chartPerJam');
+if (ctx && labels.length) {
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Aktivitas',
+        data: values,
+        backgroundColor: 'rgba(37,99,235,0.12)',
+        borderColor: 'rgba(37,99,235,0.6)',
+        borderWidth: 2,
+        borderRadius: 8,
+        borderSkipped: false,
+        hoverBackgroundColor: 'rgba(37,99,235,0.25)',
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1e293b',
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            label: (i) => ` ${i.raw} aktivitas`
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { stepSize: 1, font: { size: 10 }, color: '#94a3b8' },
+          grid: { color: '#f1f5f9' }
+        },
+        x: {
+          ticks: { font: { size: 10 }, color: '#94a3b8' },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+} else if (ctx) {
+  ctx.parentElement.innerHTML =
+    '<div class="flex items-center justify-center py-12 text-slate-400">' +
+    '<div class="text-center"><p class="text-3xl mb-2">📊</p>' +
+    '<p class="text-xs">Belum ada aktivitas dalam 12 jam terakhir</p></div></div>';
+}
+</script>
+{% endblock %}

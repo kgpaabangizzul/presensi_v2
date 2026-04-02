@@ -1,0 +1,250 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Detail Log #{{ log.id }}{% endblock %}
+
+{% block content %}
+<div class="space-y-4" style="max-width:900px">
+
+  {# ── HEADER ── #}
+  <div class="flex items-center gap-3">
+    <a href="{{ url_for('audit_log_index') }}"
+       class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm">
+      <svg style="width:14px;height:14px;color:#64748b" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </a>
+    <div>
+      <p class="text-xs text-slate-400">{{ log.waktu }}</p>
+    </div>
+  </div>
+
+  {# ── ROW: INFO AKSI + INFO USER ── #}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+    {# Informasi Aksi #}
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Informasi Aksi</p>
+      </div>
+      <div class="divide-y divide-slate-50 px-4">
+
+        <div class="flex items-center py-3 gap-3">
+          <span class="text-xs text-slate-400 w-28 flex-shrink-0">ID</span>
+          <span class="text-sm font-semibold text-slate-700">#{{ log.id }}</span>
+        </div>
+
+        <div class="flex items-center py-3 gap-3">
+          <span class="text-xs text-slate-400 w-28 flex-shrink-0">Waktu</span>
+          <span class="text-sm font-semibold text-slate-700 tabular-nums">{{ log.waktu }}</span>
+        </div>
+
+        <div class="flex items-center py-3 gap-3">
+          <span class="text-xs text-slate-400 w-28 flex-shrink-0">Aksi</span>
+          <div class="flex items-center gap-2">
+            {% set aksi_info = AKSI_LABELS.get(log.aksi, ('🔹', log.aksi)) %}
+            {% set aksi_cls = {
+              'LOGIN':        'bg-emerald-100 text-emerald-700',
+              'LOGOUT':       'bg-slate-100 text-slate-600',
+              'LOGIN_GAGAL':  'bg-red-100 text-red-700',
+              'REGISTER':     'bg-cyan-100 text-cyan-700',
+              'CREATE':       'bg-emerald-100 text-emerald-700',
+              'UPDATE':       'bg-amber-100 text-amber-700',
+              'DELETE':       'bg-red-100 text-red-700',
+              'APPROVE':      'bg-emerald-100 text-emerald-700',
+              'REJECT':       'bg-red-100 text-red-700',
+              'ABSEN_MASUK':  'bg-emerald-100 text-emerald-700',
+              'ABSEN_KELUAR': 'bg-orange-100 text-orange-700',
+              'EXPORT':       'bg-cyan-100 text-cyan-700',
+              'SETTING':      'bg-violet-100 text-violet-700',
+              'PASSWORD':     'bg-amber-100 text-amber-700',
+              'VALIDASI':     'bg-blue-100 text-blue-700',
+              'IZIN':         'bg-cyan-100 text-cyan-700',
+            } %}
+            {% set cls = aksi_cls.get(log.aksi, 'bg-slate-100 text-slate-600') %}
+            <span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full {{ cls }}">
+              {{ aksi_info[0] }} {{ aksi_info[1] }}
+            </span>
+            <code class="text-xs text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{{ log.aksi }}</code>
+          </div>
+        </div>
+
+        <div class="flex items-center py-3 gap-3">
+          <span class="text-xs text-slate-400 w-28 flex-shrink-0">Modul</span>
+          <span class="text-sm text-slate-700">{{ MODUL_LABELS.get(log.modul, log.modul) }}</span>
+        </div>
+
+        <div class="flex items-center py-3 gap-3">
+          <span class="text-xs text-slate-400 w-28 flex-shrink-0">Status</span>
+          {% if log.status == 'error' %}
+          <span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700">❌ Error</span>
+          {% else %}
+          <span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">✅ Sukses</span>
+          {% endif %}
+        </div>
+
+        {% if log.ref_id %}
+        <div class="flex items-center py-3 gap-3">
+          <span class="text-xs text-slate-400 w-28 flex-shrink-0">Ref ID</span>
+          <span class="text-sm font-semibold text-slate-700">{{ log.ref_id }}</span>
+        </div>
+        {% endif %}
+
+        {% if log.ref_table %}
+        <div class="flex items-center py-3 gap-3">
+          <span class="text-xs text-slate-400 w-28 flex-shrink-0">Ref Table</span>
+          <code class="text-xs text-slate-600 bg-slate-50 px-2 py-0.5 rounded">{{ log.ref_table }}</code>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+
+    {# Informasi User & Sesi #}
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Informasi User & Sesi</p>
+      </div>
+      <div class="p-4">
+
+        {# Avatar + Nama #}
+        <div class="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100">
+          <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-bold flex-shrink-0">
+            {{ log.user_nama[0]|upper if log.user_nama else '?' }}
+          </div>
+          <div>
+            <p class="font-bold text-slate-800">{{ log.user_nama or 'System' }}</p>
+            <p class="text-xs text-slate-400">{{ log.user_role or '-' }}</p>
+            <p class="text-xs text-slate-300">ID: {{ log.user_id or '-' }}</p>
+          </div>
+        </div>
+
+        <div class="divide-y divide-slate-50">
+          <div class="flex items-center py-3 gap-3">
+            <span class="text-xs text-slate-400 w-28 flex-shrink-0">IP Address</span>
+            <code class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg">{{ log.ip_address or '-' }}</code>
+          </div>
+          <div class="flex items-start py-3 gap-3">
+            <span class="text-xs text-slate-400 w-28 flex-shrink-0 pt-0.5">User Agent</span>
+            <p class="text-xs text-slate-500 break-all leading-relaxed">{{ log.user_agent or '-' }}</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  {# ── DESKRIPSI ── #}
+  {% if log.deskripsi %}
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-100 bg-slate-50">
+      <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">📝 Deskripsi</p>
+    </div>
+    <div class="px-4 py-3">
+      <p class="text-sm text-slate-700 leading-relaxed">{{ log.deskripsi }}</p>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── PESAN ERROR ── #}
+  {% if log.pesan_error %}
+  <div class="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b border-red-100 bg-red-50 flex items-center gap-2">
+      <svg style="width:14px;height:14px;color:#dc2626" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+      </svg>
+      <p class="text-xs font-bold text-red-600 uppercase tracking-wider">Pesan Error</p>
+    </div>
+    <div class="p-4">
+      <pre class="text-xs text-red-600 whitespace-pre-wrap leading-relaxed bg-red-50 rounded-xl p-3">{{ log.pesan_error }}</pre>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── PERUBAHAN DATA (DIFF) ── #}
+  {% if log.data_lama or log.data_baru %}
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+      <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">🔀 Perubahan Data</p>
+      <div class="flex rounded-lg overflow-hidden border border-slate-200">
+        <button id="btnDiff" onclick="showView('diff')"
+                class="px-3 py-1 text-xs font-semibold bg-blue-600 text-white transition-colors">Diff</button>
+        <button id="btnRaw" onclick="showView('raw')"
+                class="px-3 py-1 text-xs font-semibold bg-white text-slate-500 hover:bg-slate-50 transition-colors">Raw JSON</button>
+      </div>
+    </div>
+
+    {# Diff View #}
+    <div id="viewDiff" class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+      <div>
+        <div class="px-4 py-2 bg-red-50 border-b border-slate-100 flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-red-400 flex-shrink-0"></span>
+          <span class="text-xs font-bold text-red-600">Data Sebelum</span>
+        </div>
+        <div class="p-4 space-y-1">
+          {% if log.data_lama %}
+            {% set dl = log.data_lama if log.data_lama is mapping else {} %}
+            {% for k, v in dl.items() %}
+              {% set db = log.data_baru if log.data_baru is mapping else {} %}
+              {% set changed = db.get(k) != v if db else true %}
+              <div class="flex gap-3 py-1 rounded-lg px-2 {{ 'bg-red-50' if changed else '' }}">
+                <code class="text-xs text-slate-400 w-32 flex-shrink-0">{{ k }}</code>
+                <span class="text-xs {{ 'text-red-600 font-semibold' if changed else 'text-slate-600' }} break-all">
+                  {{ v if v is not none else '—' }}
+                </span>
+              </div>
+            {% endfor %}
+          {% else %}
+          <p class="text-xs text-slate-400 italic">Tidak ada data lama</p>
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="px-4 py-2 bg-emerald-50 border-b border-slate-100 flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-emerald-400 flex-shrink-0"></span>
+          <span class="text-xs font-bold text-emerald-600">Data Sesudah</span>
+        </div>
+        <div class="p-4 space-y-1">
+          {% if log.data_baru %}
+            {% set db = log.data_baru if log.data_baru is mapping else {} %}
+            {% for k, v in db.items() %}
+              {% set dl = log.data_lama if log.data_lama is mapping else {} %}
+              {% set changed = dl.get(k) != v if dl else true %}
+              <div class="flex gap-3 py-1 rounded-lg px-2 {{ 'bg-emerald-50' if changed else '' }}">
+                <code class="text-xs text-slate-400 w-32 flex-shrink-0">{{ k }}</code>
+                <span class="text-xs {{ 'text-emerald-600 font-semibold' if changed else 'text-slate-600' }} break-all">
+                  {{ v if v is not none else '—' }}
+                </span>
+              </div>
+            {% endfor %}
+          {% else %}
+          <p class="text-xs text-slate-400 italic">Tidak ada data baru</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Raw JSON View #}
+    <div id="viewRaw" class="hidden p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">data_lama</p>
+        <pre class="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 overflow-auto" style="max-height:280px">{{ log.data_lama | tojson(indent=2) if log.data_lama else 'null' }}</pre>
+      </div>
+      <div>
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">data_baru</p>
+        <pre class="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 overflow-auto" style="max-height:280px">{{ log.data_baru | tojson(indent=2) if log.data_baru else 'null' }}</pre>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+function showView(v) {
+  const isDiff = v === 'diff';
+  document.getElementById('viewDiff').classList.toggle('hidden', !isDiff);
+  document.getElementById('viewRaw').classList.toggle('hidden', isDiff);
+  document.getElementById('btnDiff').className = 'px-3 py-1 text-xs font-semibold transition-colors ' + (isDiff ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50');
+  document.getElementById('btnRaw').className  = 'px-3 py-1 text-xs font-semibold transition-colors ' + (!isDiff ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50');
+}
+</script>
+{% endblock %}

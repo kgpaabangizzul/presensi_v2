@@ -1,80 +1,282 @@
 {% extends 'admin/layout.html' %}
 {% block page_title %}Pengaturan Sistem{% endblock %}
 {% block content %}
-<div class="max-w-2xl">
-  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
-    <h3 class="font-bold text-slate-800 mb-6">Konfigurasi Sistem Absensi</h3>
-    <form method="POST" enctype="multipart/form-data" class="space-y-5">
 
-      <!-- Logo Upload -->
-      <div style="border:1.5px dashed #cbd5e1;border-radius:14px;padding:16px">
-        <p class="text-sm font-semibold text-slate-700 mb-3">🖼️ Logo Aplikasi</p>
-        {% if settings and settings.logo %}
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap">
-          <img src="/static/uploads/logo/{{ settings.logo }}" style="height:60px;max-width:160px;object-fit:contain;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;padding:6px">
-          <div>
-            <p style="font-size:12px;font-weight:600;color:#1e293b">Logo aktif: {{ settings.logo }}</p>
-            <button type="button" onclick="hapusLogo()"
-              style="background:#fee2e2;color:#991b1b;border:none;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px">
-              🗑 Hapus Logo
-            </button>
+{# ── Tab Navigation ── #}
+<div style="display:flex;gap:4px;margin-bottom:20px;background:#f1f5f9;border-radius:14px;padding:4px;width:fit-content">
+  <button onclick="switchTab('umum')" id="tab-btn-umum"
+          style="padding:8px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;background:#2563eb;color:#fff">
+    ⚙️ Umum
+  </button>
+  <button onclick="switchTab('notif')" id="tab-btn-notif"
+          style="padding:8px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;background:transparent;color:#64748b">
+    🔔 Notifikasi & OTP
+  </button>
+</div>
+
+{# ══════════════════════════════════════════════
+   TAB 1 — UMUM
+══════════════════════════════════════════════ #}
+<div id="tab-umum">
+  <div style="max-width:640px">
+    <div class="card" style="padding:28px">
+      <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:20px">Konfigurasi Sistem Absensi</h3>
+      <form method="POST" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:18px">
+
+        {# Logo #}
+        <div style="border:1.5px dashed #cbd5e1;border-radius:14px;padding:16px">
+          <p style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">🖼️ Logo Aplikasi</p>
+          {% if settings and settings.logo %}
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+            <img src="/static/uploads/logo/{{ settings.logo }}"
+                 style="height:60px;max-width:160px;object-fit:contain;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;padding:6px">
+            <div>
+              <p style="font-size:12px;font-weight:600;color:#1e293b">Logo aktif: {{ settings.logo }}</p>
+              <button type="button" onclick="hapusLogo()"
+                style="background:#fee2e2;color:#991b1b;border:none;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px">
+                🗑 Hapus Logo
+              </button>
+            </div>
+          </div>
+          {% endif %}
+          <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">
+            {{ 'Ganti Logo' if settings and settings.logo else 'Upload Logo' }} (PNG, JPG, SVG — maks 2MB)
+          </label>
+          <input type="file" name="logo" accept=".png,.jpg,.jpeg,.svg,.gif,.webp"
+            style="width:100%;padding:8px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:#fff;box-sizing:border-box"
+            onchange="previewLogo(this)">
+          <div id="logoPreview" style="display:none;margin-top:10px">
+            <p style="font-size:11px;color:#64748b;margin-bottom:4px">Pratinjau:</p>
+            <img id="logoImg" style="height:60px;max-width:160px;object-fit:contain;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;padding:6px">
           </div>
         </div>
-        {% endif %}
-        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">
-          {{ 'Ganti Logo' if settings and settings.logo else 'Upload Logo' }} (PNG, JPG, SVG — maks 2MB)
-        </label>
-        <input type="file" name="logo" accept=".png,.jpg,.jpeg,.svg,.gif,.webp"
-          style="width:100%;padding:8px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;background:#fff;box-sizing:border-box"
-          onchange="previewLogo(this)">
-        <div id="logoPreview" style="display:none;margin-top:10px">
-          <p style="font-size:11px;color:#64748b;margin-bottom:4px">Pratinjau:</p>
-          <img id="logoImg" style="height:60px;max-width:160px;object-fit:contain;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;padding:6px">
+
+        {# Nama Perusahaan #}
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Nama Perusahaan / Instansi</label>
+          <input type="text" name="nama_perusahaan" value="{{ settings.nama_perusahaan }}" class="input-field" required>
         </div>
-      </div>
 
-      <div>
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Nama Perusahaan / Instansi</label>
-        <input type="text" name="nama_perusahaan" value="{{ settings.nama_perusahaan }}" class="input-field" required>
-      </div>
-
-      <div class="p-4 bg-blue-50 rounded-xl border border-blue-100">
-        <p class="text-sm font-semibold text-blue-800 mb-3">📍 Lokasi Kantor (GPS)</p>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs text-blue-700 mb-1">Latitude</label>
-            <input type="number" step="any" name="office_lat" value="{{ settings.office_lat }}" class="input-field text-sm" required>
-          </div>
-          <div>
-            <label class="block text-xs text-blue-700 mb-1">Longitude</label>
-            <input type="number" step="any" name="office_lng" value="{{ settings.office_lng }}" class="input-field text-sm" required>
+        {# GPS #}
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:16px">
+          <p style="font-size:13px;font-weight:600;color:#1e40af;margin-bottom:10px">📍 Lokasi Kantor (GPS)</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <label style="display:block;font-size:12px;color:#3b82f6;margin-bottom:5px;font-weight:500">Latitude</label>
+              <input type="number" step="any" name="office_lat" value="{{ settings.office_lat }}" class="input-field" style="font-size:14px" required>
+            </div>
+            <div>
+              <label style="display:block;font-size:12px;color:#3b82f6;margin-bottom:5px;font-weight:500">Longitude</label>
+              <input type="number" step="any" name="office_lng" value="{{ settings.office_lng }}" class="input-field" style="font-size:14px" required>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div>
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Radius Absen Maksimal (meter)</label>
-        <input type="number" name="max_distance" value="{{ settings.max_distance }}" class="input-field" min="10" max="5000" required>
-        <p class="text-xs text-slate-400 mt-1">Pegawai harus berada dalam radius ini untuk absen</p>
-      </div>
+        {# Radius #}
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Radius Absen Maksimal (meter)</label>
+          <input type="number" name="max_distance" value="{{ settings.max_distance }}" class="input-field" min="10" max="5000" required>
+          <p style="font-size:11px;color:#94a3b8;margin-top:4px">Pegawai harus berada dalam radius ini untuk absen</p>
+        </div>
 
-      <div class="pt-2">
-        <button type="submit" class="btn-primary px-8 py-3">Simpan Pengaturan</button>
-      </div>
-    </form>
-  </div>
+        <div style="padding-top:4px">
+          <button type="submit" class="btn-primary" style="padding:11px 28px">Simpan Pengaturan</button>
+        </div>
+      </form>
+    </div>
 
-  <div class="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-5">
-    <p class="text-sm font-semibold text-amber-800 mb-1">ℹ️ Info Login Default</p>
-    <p class="text-xs text-amber-700">Admin: admin@absensi.com / admin123</p>
-    <p class="text-xs text-amber-700 mt-0.5">Segera ganti password setelah login pertama</p>
+    <div style="margin-top:14px;background:#fefce8;border:1px solid #fde68a;border-radius:16px;padding:16px">
+      <p style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:4px">ℹ️ Info Login Default</p>
+      <p style="font-size:12px;color:#a16207;margin:0">Admin: admin@absensi.com / admin123</p>
+      <p style="font-size:12px;color:#a16207;margin-top:2px">Segera ganti password setelah login pertama</p>
+    </div>
   </div>
 </div>
 
-<!-- Form tersembunyi untuk hapus logo (di luar form utama) -->
+{# ══════════════════════════════════════════════
+   TAB 2 — NOTIFIKASI & OTP
+══════════════════════════════════════════════ #}
+<div id="tab-notif" style="display:none">
+  <div style="max-width:700px;display:flex;flex-direction:column;gap:16px">
+
+    {# Form SMTP + WA dalam satu form #}
+    <form method="post" action="{{ url_for('lupa_pw.admin_settings_notif') }}" id="formNotif">
+
+      {# ── SMTP EMAIL ── #}
+      <div class="card" style="padding:24px;margin-bottom:16px">
+        <h4 style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+          <span style="width:32px;height:32px;background:#dbeafe;border-radius:10px;display:flex;align-items:center;justify-content:center">✉️</span>
+          Konfigurasi Email (SMTP)
+        </h4>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div style="grid-column:1">
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">SMTP Host</label>
+            <input type="text" name="smtp_host" class="input-field" style="font-size:14px"
+                   value="{{ settings.get('smtp_host','') if settings else '' }}"
+                   placeholder="smtp.gmail.com">
+            <p style="font-size:11px;color:#94a3b8;margin-top:3px">Gmail: smtp.gmail.com · Outlook: smtp.office365.com</p>
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Port</label>
+            <input type="number" name="smtp_port" class="input-field" style="font-size:14px"
+                   value="{{ settings.get('smtp_port', 587) if settings else 587 }}"
+                   placeholder="587">
+            <p style="font-size:11px;color:#94a3b8;margin-top:3px">587 (TLS) / 465 (SSL)</p>
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Enkripsi</label>
+            <select name="smtp_tls" class="input-field" style="font-size:14px">
+              <option value="true"  {% if not settings or settings.get('smtp_tls', True) %}selected{% endif %}>STARTTLS (port 587)</option>
+              <option value="false" {% if settings and not settings.get('smtp_tls', True) %}selected{% endif %}>SSL (port 465)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Nama Pengirim</label>
+            <input type="text" name="smtp_from_name" class="input-field" style="font-size:14px"
+                   value="{{ settings.get('smtp_from_name','Presensi Digital') if settings else 'Presensi Digital' }}"
+                   placeholder="Presensi Digital">
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Email Pengirim</label>
+            <input type="email" name="smtp_user" class="input-field" style="font-size:14px"
+                   value="{{ settings.get('smtp_user','') if settings else '' }}"
+                   placeholder="notif@perusahaan.com">
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">
+              App Password
+              <a href="https://myaccount.google.com/apppasswords" target="_blank"
+                 style="color:#94a3b8;font-weight:400;font-size:11px;text-decoration:none;margin-left:4px">↗ cara dapat</a>
+            </label>
+            <div style="position:relative">
+              <input type="password" name="smtp_pass" id="smtpPass" class="input-field"
+                     style="font-size:14px;padding-right:44px"
+                     value="{{ settings.get('smtp_pass','') if settings else '' }}"
+                     placeholder="16 karakter App Password">
+              <button type="button" onclick="toggleField('smtpPass',this)"
+                      style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;padding:0">👁</button>
+            </div>
+            <p style="font-size:11px;color:#f59e0b;margin-top:3px">⚠ Gunakan App Password, bukan password Gmail biasa</p>
+          </div>
+        </div>
+
+        {# Test Email #}
+        <div style="margin-top:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px">
+          <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">🧪 Test Kirim OTP Email</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="email" id="testEmail" class="input-field"
+                   style="font-size:13px;flex:1;min-width:200px;padding:9px 12px"
+                   placeholder="email tujuan test">
+            <button type="button" onclick="testKirim('email')" class="btn-primary"
+                    style="padding:9px 16px;font-size:13px;white-space:nowrap">
+              Kirim Test ✉️
+            </button>
+          </div>
+          <div id="testEmailResult" style="font-size:12px;margin-top:8px"></div>
+        </div>
+      </div>
+
+      {# ── WHATSAPP FONNTE ── #}
+      <div class="card" style="padding:24px;margin-bottom:16px">
+        <h4 style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+          <span style="width:32px;height:32px;background:#dcfce7;border-radius:10px;display:flex;align-items:center;justify-content:center">💬</span>
+          WhatsApp via Fonnte
+          <a href="https://fonnte.com" target="_blank"
+             style="font-size:11px;font-weight:400;color:#94a3b8;text-decoration:none;margin-left:4px">↗ fonnte.com</a>
+        </h4>
+
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px">Token API Fonnte</label>
+          <div style="position:relative;max-width:420px">
+            <input type="password" name="fonnte_token" id="fonnteToken" class="input-field"
+                   style="font-size:14px;padding-right:44px"
+                   value="{{ settings.get('fonnte_token','') if settings else '' }}"
+                   placeholder="Token dari dashboard Fonnte">
+            <button type="button" onclick="toggleField('fonnteToken',this)"
+                    style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;padding:0">👁</button>
+          </div>
+          <p style="font-size:11px;color:#94a3b8;margin-top:3px">Login fonnte.com → Dashboard → salin token device</p>
+        </div>
+
+        {# Test WA #}
+        <div style="margin-top:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px">
+          <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">🧪 Test Kirim OTP WhatsApp</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="tel" id="testWa" class="input-field"
+                   style="font-size:13px;flex:1;min-width:200px;padding:9px 12px"
+                   placeholder="08xxxxxxxxxx">
+            <button type="button" onclick="testKirim('whatsapp')"
+                    style="padding:9px 16px;font-size:13px;white-space:nowrap;background:#16a34a;color:#fff;font-weight:600;border-radius:13px;border:none;cursor:pointer;transition:all .18s">
+              Kirim Test 💬
+            </button>
+          </div>
+          <div id="testWaResult" style="font-size:12px;margin-top:8px"></div>
+        </div>
+      </div>
+
+      {# Save button #}
+      <div style="display:flex;gap:10px;align-items:center">
+        <button type="submit" class="btn-primary" style="padding:11px 28px">
+          💾 Simpan Konfigurasi Notifikasi
+        </button>
+        <span id="saveMsg" style="font-size:13px"></span>
+      </div>
+
+    </form>
+
+    {# ── Panduan Setup ── #}
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:16px;padding:20px">
+      <h5 style="font-size:13px;font-weight:700;color:#0369a1;margin-bottom:14px">📖 Panduan Setup</h5>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <p style="font-size:12px;font-weight:600;color:#0c4a6e;margin-bottom:6px">📧 Gmail App Password:</p>
+          <ol style="font-size:12px;color:#64748b;padding-left:16px;margin:0;line-height:1.7">
+            <li>Aktifkan 2-Factor Authentication di akun Google</li>
+            <li>Buka <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#2563eb">myaccount.google.com/apppasswords</a></li>
+            <li>Pilih "Mail" → "Other" → beri nama "Presensi"</li>
+            <li>Salin 16-karakter password yang muncul</li>
+            <li>Isi di kolom App Password di atas</li>
+          </ol>
+        </div>
+        <div>
+          <p style="font-size:12px;font-weight:600;color:#0c4a6e;margin-bottom:6px">💬 WhatsApp via Fonnte:</p>
+          <ol style="font-size:12px;color:#64748b;padding-left:16px;margin:0;line-height:1.7">
+            <li>Daftar di <a href="https://fonnte.com" target="_blank" style="color:#2563eb">fonnte.com</a></li>
+            <li>Tambah device → scan QR dengan WhatsApp</li>
+            <li>Salin token dari dashboard</li>
+            <li>Isi di kolom Token API di atas</li>
+            <li>Pastikan WA yang di-scan selalu online</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# Form hapus logo (tersembunyi) #}
 <form id="formHapusLogo" method="POST" action="/admin/settings/hapus-logo" style="display:none"></form>
 
 <script>
+// ── Tab switcher ─────────────────────────────────────────────────
+function switchTab(name) {
+  ['umum','notif'].forEach(t => {
+    const panel = document.getElementById('tab-' + t);
+    const btn   = document.getElementById('tab-btn-' + t);
+    const active = (t === name);
+    panel.style.display = active ? '' : 'none';
+    btn.style.background = active ? '#2563eb' : 'transparent';
+    btn.style.color = active ? '#fff' : '#64748b';
+  });
+}
+
+// ── Logo preview ─────────────────────────────────────────────────
 function previewLogo(input) {
   if (!input.files[0]) return;
   const reader = new FileReader();
@@ -85,9 +287,45 @@ function previewLogo(input) {
   reader.readAsDataURL(input.files[0]);
 }
 function hapusLogo() {
-  if (confirm('Hapus logo?')) {
-    document.getElementById('formHapusLogo').submit();
-  }
+  if (confirm('Hapus logo?')) document.getElementById('formHapusLogo').submit();
 }
+
+// ── Toggle password visibility ───────────────────────────────────
+function toggleField(id, btn) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.textContent = el.type === 'text' ? '🙈' : '👁';
+}
+
+// ── Test kirim OTP ───────────────────────────────────────────────
+function testKirim(metode) {
+  const tujuan    = metode === 'email'
+    ? document.getElementById('testEmail').value
+    : document.getElementById('testWa').value;
+  const resultEl  = document.getElementById(
+    metode === 'email' ? 'testEmailResult' : 'testWaResult'
+  );
+  if (!tujuan) {
+    resultEl.innerHTML = '<span style="color:#ef4444">Isi tujuan terlebih dahulu.</span>';
+    return;
+  }
+  resultEl.innerHTML = '<span style="color:#94a3b8">⏳ Mengirim...</span>';
+  const fd = new FormData();
+  fd.append('metode', metode);
+  fd.append('tujuan', tujuan);
+  fetch('{{ url_for("lupa_pw.admin_test_notif") }}', {method:'POST', body:fd})
+    .then(r => r.json())
+    .then(d => {
+      resultEl.innerHTML = d.success
+        ? `<span style="color:#10b981">✅ ${d.message}</span>`
+        : `<span style="color:#ef4444">❌ ${d.message}</span>`;
+    })
+    .catch(() => {
+      resultEl.innerHTML = '<span style="color:#ef4444">❌ Terjadi kesalahan. Coba lagi.</span>';
+    });
+}
+
+// ── Auto-switch ke tab notif jika URL hash #notif ────────────────
+if (location.hash === '#notif') switchTab('notif');
 </script>
 {% endblock %}
