@@ -1914,6 +1914,410 @@ def export_pdf():
     t.setStyle(TableStyle(sty)); el.append(t); doc.build(el); out.seek(0)
     return send_file(out,as_attachment=True,download_name=f"absensi_{bulan}.pdf",mimetype='application/pdf')
 
+# ── LAPORAN PER PEGAWAI ───────────────────────────────────────────────────────
+@app.route('/admin/laporan/pegawai')
+@admin_required
+def laporan_per_pegawai():
+    conn = get_db(); cur = q(conn)
+    bulan     = request.args.get('bulan', date.today().strftime('%Y-%m'))
+    dept_id   = request.args.get('dept_id', '')
+    status_f  = request.args.get('status_filter', '')
+
+    # Daftar departemen untuk filter
+    cur.execute("SELECT id, nama FROM departemen WHERE aktif=1 ORDER BY nama")
+    daftar_dept = cur.fetchall()
+
+    # Query pegawai
+    where = ["u.role='user'", "u.status='active'"]
+    params = []
+    if dept_id:
+        where.append("u.departemen_id=%s"); params.append(dept_id)
+    cur.execute(f"""SELECT u.id,u.nik,u.nama,u.jabatan,u.departemen,u.foto,
+        d.nama as dept_nama, s.nama as shift_nama, s.jam_masuk as shift_masuk, s.jam_keluar as shift_keluar
+        FROM users u
+        LEFT JOIN departemen d ON u.departemen_id=d.id
+        LEFT JOIN shift s ON u.shift_id=s.id
+        WHERE {' AND '.join(where)} ORDER BY u.nama""", params)
+    users = cur.fetchall()
+
+    # Hitung hari kerja dalam bulan (Senin-Sabtu kecuali Minggu)
+    y, m   = map(int, bulan.split('-'))
+    import calendar
+    total_hari_kerja = sum(
+        1 for d2 in range(1, calendar.monthrange(y, m)[1]+1)
+        if date(y, m, d2).weekday() < 6  # 0=Senin..5=Sabtu, 6=Minggu
+    )
+
+    rekap = []
+    for u in users:
+        cur.execute("""
+            SELECT tanggal, jam_masuk, jam_keluar, status, keterangan,
+                   jarak_masuk, shift_id
+            FROM absensi
+            WHERE user_id=%s AND TO_CHAR(tanggal,'YYYY-MM')=%s
+            ORDER BY tanggal
+        """, (u['id'], bulan))
+        absensi_list = cur.fetchall()
+
+        hadir  = sum(1 for a in absensi_list if a['status'] == 'hadir')
+        telat  = sum(1 for a in absensi_list if a['status'] == 'telat')
+        izin   = sum(1 for a in absensi_list if a['status'] == 'izin')
+        alpha  = sum(1 for a in absensi_list if a['status'] == 'alpha')
+        total_masuk = hadir + telat
+        pct    = round(total_masuk / total_hari_kerja * 100) if total_hari_kerja else 0
+        alpha_real = max(0, total_hari_kerja - hadir - telat - izin - alpha)
+
+        row = {
+            'user'        : u,
+            'hadir'       : hadir,
+            'telat'       : telat,
+            'izin'        : izin,
+            'alpha'       : alpha + alpha_real,
+            'total_masuk' : total_masuk,
+            'pct'         : pct,
+            'hari_kerja'  : total_hari_kerja,
+            'absensi'     : absensi_list,
+        }
+        if status_f == 'baik'   and pct <  90: continue
+        if status_f == 'cukup'  and not (75 <= pct < 90): continue
+        if status_f == 'kurang' and pct >= 75: continue
+        rekap.append(row)
+
+    cur.close(); conn.close()
+    return render_template('admin/laporan_pegawai.html',
+        rekap=rekap, bulan=bulan, daftar_dept=daftar_dept,
+        dept_id=dept_id, status_filter=status_f,
+        total_hari_kerja=total_hari_kerja)
+
+
+@app.route('/admin/laporan/pegawai/<int:uid>')
+@admin_required
+def laporan_detail_pegawai(uid):
+    conn = get_db(); cur = q(conn)
+    bulan = request.args.get('bulan', date.today().strftime('%Y-%m'))
+
+    cur.execute("""SELECT u.*,d.nama as dept_nama,s.nama as shift_nama,
+        s.jam_masuk as shift_masuk,s.jam_keluar as shift_keluar,s.toleransi_menit
+        FROM users u
+        LEFT JOIN departemen d ON u.departemen_id=d.id
+        LEFT JOIN shift s ON u.shift_id=s.id
+        WHERE u.id=%s""", (uid,))
+    user = cur.fetchone()
+    if not user:
+        cur.close(); conn.close()
+        flash('Pegawai tidak ditemukan', 'error')
+        return redirect(url_for('laporan_per_pegawai'))
+
+    cur.execute("""
+        SELECT a.*, s.nama as shift_nama, s.jam_masuk as sft_masuk, s.jam_keluar as sft_keluar
+        FROM absensi a
+        LEFT JOIN shift s ON a.shift_id=s.id
+        WHERE a.user_id=%s AND TO_CHAR(a.tanggal,'YYYY-MM')=%s
+        ORDER BY a.tanggal
+    """, (uid, bulan))
+    absensi_list = cur.fetchall()
+
+    # Izin bulan ini
+    cur.execute("""SELECT * FROM izin WHERE user_id=%s
+        AND TO_CHAR(tanggal_mulai,'YYYY-MM')=%s ORDER BY tanggal_mulai""",
+        (uid, bulan))
+    izin_list = cur.fetchall()
+
+    cur.execute("SELECT * FROM settings WHERE id=1")
+    settings = cur.fetchone()
+    cur.close(); conn.close()
+
+    # Statistik
+    hadir  = sum(1 for a in absensi_list if a['status'] == 'hadir')
+    telat  = sum(1 for a in absensi_list if a['status'] == 'telat')
+    izin_c = sum(1 for a in absensi_list if a['status'] == 'izin')
+    alpha  = sum(1 for a in absensi_list if a['status'] == 'alpha')
+
+    import calendar
+    y, m = map(int, bulan.split('-'))
+    total_hari_kerja = sum(
+        1 for d2 in range(1, calendar.monthrange(y, m)[1]+1)
+        if date(y, m, d2).weekday() < 6
+    )
+    total_masuk = hadir + telat
+    pct = round(total_masuk / total_hari_kerja * 100) if total_hari_kerja else 0
+
+    # Build kalender
+    cal_data = {}
+    for a in absensi_list:
+        cal_data[str(a['tanggal'])] = a
+
+    # Buat list hari dalam bulan
+    bulan_days = []
+    for d2 in range(1, calendar.monthrange(y, m)[1]+1):
+        tgl = date(y, m, d2)
+        tgl_str = tgl.isoformat()
+        bulan_days.append({
+            'tanggal' : tgl,
+            'hari'    : tgl.strftime('%a'),
+            'is_minggu': tgl.weekday() == 6,
+            'absensi' : cal_data.get(tgl_str),
+        })
+
+    return render_template('admin/laporan_detail_pegawai.html',
+        user=user, bulan=bulan, absensi_list=absensi_list,
+        izin_list=izin_list, hadir=hadir, telat=telat,
+        izin_c=izin_c, alpha=alpha,
+        total_masuk=total_masuk, total_hari_kerja=total_hari_kerja,
+        pct=pct, bulan_days=bulan_days, settings=settings)
+
+
+@app.route('/admin/laporan/pegawai/<int:uid>/export-excel')
+@admin_required
+def laporan_pegawai_export_excel(uid):
+    conn = get_db(); cur = q(conn)
+    bulan = request.args.get('bulan', date.today().strftime('%Y-%m'))
+
+    cur.execute("""SELECT u.*,d.nama as dept_nama,s.nama as shift_nama,
+        s.jam_masuk as shift_masuk,s.jam_keluar as shift_keluar
+        FROM users u LEFT JOIN departemen d ON u.departemen_id=d.id
+        LEFT JOIN shift s ON u.shift_id=s.id WHERE u.id=%s""", (uid,))
+    user = cur.fetchone()
+
+    cur.execute("""SELECT a.*,s.nama as shift_nama,s.jam_masuk as sft_masuk
+        FROM absensi a LEFT JOIN shift s ON a.shift_id=s.id
+        WHERE a.user_id=%s AND TO_CHAR(a.tanggal,'YYYY-MM')=%s
+        ORDER BY a.tanggal""", (uid, bulan))
+    rows = cur.fetchall()
+
+    cur.execute("SELECT * FROM settings WHERE id=1")
+    settings = cur.fetchone()
+    cur.close(); conn.close()
+
+    wb = openpyxl.Workbook(); ws = wb.active
+    ws.title = f"Absensi {user['nama']}"
+
+    # Column widths
+    for col, w in zip('ABCDEFGHI', [12,10,12,12,14,14,14,12,25]):
+        ws.column_dimensions[col].width = w
+
+    navy  = 'FF1E3A5F'
+    green = 'FFC8E6C9'; yellow = 'FFFFE082'; blue = 'FFBBDEFB'; red = 'FFFFCDD2'; grey = 'FFF5F5F5'
+
+    def cell_style(cell, bold=False, bg=None, align='left', color='FF000000', size=10):
+        cell.font = Font(bold=bold, size=size, color=color)
+        if bg: cell.fill = PatternFill(fill_type='solid', fgColor=bg)
+        cell.alignment = Alignment(horizontal=align, vertical='center', wrap_text=True)
+
+    instansi = settings['nama_perusahaan'] if settings else 'RST Slamet Riyadi'
+
+    ws.merge_cells('A1:I1'); ws['A1'] = instansi.upper()
+    cell_style(ws['A1'], bold=True, bg=navy, align='center', color='FFFFFFFF', size=12)
+    ws.row_dimensions[1].height = 22
+
+    ws.merge_cells('A2:I2'); ws['A2'] = f'LAPORAN ABSENSI PEGAWAI - {bulan}'
+    cell_style(ws['A2'], bold=True, align='center', bg='FFE8EFF8', size=11)
+
+    ws.merge_cells('A3:I3'); ws['A3'] = ''
+    ws.row_dimensions[3].height = 6
+
+    # Info pegawai
+    info = [
+        ('Nama', user['nama']),  ('NIK/NRP', user['nik'] or '-'),
+        ('Jabatan', user['jabatan'] or '-'), ('Departemen', user['dept_nama'] or '-'),
+        ('Shift', f"{user['shift_nama'] or '-'} ({user['shift_masuk'] or '-'} - {user['shift_keluar'] or '-'})"),
+        ('Periode', bulan),
+    ]
+    for i, (lbl, val) in enumerate(info, 4):
+        ws[f'A{i}'] = lbl; ws[f'B{i}'] = ':'
+        ws.merge_cells(f'C{i}:I{i}'); ws[f'C{i}'] = val
+        cell_style(ws[f'A{i}'], bold=True)
+        cell_style(ws[f'C{i}'])
+    ws.row_dimensions[9].height = 6
+
+    # Header tabel
+    headers = ['Tanggal', 'Hari', 'Jam Masuk', 'Jam Keluar', 'Shift', 'Jarak (m)', 'Status', 'Keterangan']
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(10, col, h)
+        cell_style(c, bold=True, bg=navy, align='center', color='FFFFFFFF')
+    ws.row_dimensions[10].height = 18
+
+    # Data
+    sc = {'hadir': green, 'telat': yellow, 'izin': blue, 'alpha': red}
+    for ri, row in enumerate(rows, 11):
+        tgl = row['tanggal']
+        hari = tgl.strftime('%A') if hasattr(tgl, 'strftime') else '-'
+        bg_row = sc.get(row['status'], 'FFFFFFFF')
+        vals = [
+            str(tgl), hari,
+            str(row['jam_masuk'] or '-'), str(row['jam_keluar'] or '-'),
+            row['shift_nama'] or '-',
+            f"{row['jarak_masuk']:.0f}" if row['jarak_masuk'] else '-',
+            (row['status'] or '-').upper(), row['keterangan'] or '-'
+        ]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(ri, col, val)
+            cell_style(c, bg=bg_row if col in (7,) else grey if ri % 2 == 0 else None,
+                       align='center' if col in (1,2,3,4,6,7) else 'left')
+
+    # Statistik
+    hadir  = sum(1 for r in rows if r['status']=='hadir')
+    telat  = sum(1 for r in rows if r['status']=='telat')
+    izin   = sum(1 for r in rows if r['status']=='izin')
+    alpha  = sum(1 for r in rows if r['status']=='alpha')
+
+    sr = len(rows) + 12
+    ws.row_dimensions[sr].height = 6
+    stats = [
+        ('Hadir', hadir, green), ('Telat', telat, yellow),
+        ('Izin', izin, blue),  ('Alpha', alpha, red),
+        ('Total Hadir+Telat', hadir+telat, 'FFFFFFFF'),
+    ]
+    for i, (lbl, val, bg) in enumerate(stats):
+        r = sr + 1 + i
+        ws[f'A{r}'] = lbl; ws[f'B{r}'] = val
+        cell_style(ws[f'A{r}'], bold=True, bg=bg)
+        cell_style(ws[f'B{r}'], bold=True, align='center', bg=bg)
+
+    out = io.BytesIO(); wb.save(out); out.seek(0)
+    safe_name = re.sub(r'[^\w]', '_', user['nama'])
+    log_audit(conn if False else get_db(), 'EXPORT', 'laporan',
+              deskripsi=f'Export Excel laporan pegawai {user["nama"]} bulan {bulan}')
+    return send_file(out, as_attachment=True,
+        download_name=f"absensi_{safe_name}_{bulan}.xlsx",
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/admin/laporan/pegawai/<int:uid>/export-pdf')
+@admin_required
+def laporan_pegawai_export_pdf(uid):
+    conn = get_db(); cur = q(conn)
+    bulan = request.args.get('bulan', date.today().strftime('%Y-%m'))
+
+    cur.execute("""SELECT u.*,d.nama as dept_nama,s.nama as shift_nama,
+        s.jam_masuk as shift_masuk,s.jam_keluar as shift_keluar
+        FROM users u LEFT JOIN departemen d ON u.departemen_id=d.id
+        LEFT JOIN shift s ON u.shift_id=s.id WHERE u.id=%s""", (uid,))
+    user = cur.fetchone()
+
+    cur.execute("""SELECT a.*,s.nama as shift_nama
+        FROM absensi a LEFT JOIN shift s ON a.shift_id=s.id
+        WHERE a.user_id=%s AND TO_CHAR(a.tanggal,'YYYY-MM')=%s
+        ORDER BY a.tanggal""", (uid, bulan))
+    rows = cur.fetchall()
+
+    cur.execute("SELECT * FROM settings WHERE id=1")
+    settings = cur.fetchone()
+    cur.close(); conn.close()
+
+    hadir = sum(1 for r in rows if r['status']=='hadir')
+    telat = sum(1 for r in rows if r['status']=='telat')
+    izin  = sum(1 for r in rows if r['status']=='izin')
+    alpha = sum(1 for r in rows if r['status']=='alpha')
+
+    out = io.BytesIO()
+    doc = SimpleDocTemplate(out, pagesize=A4,
+        rightMargin=1.5*cm, leftMargin=1.5*cm,
+        topMargin=2*cm, bottomMargin=1.5*cm)
+
+    navy   = colors.HexColor('#1E3A5F')
+    c_green= colors.HexColor('#C8E6C9')
+    c_yell = colors.HexColor('#FFE082')
+    c_blue = colors.HexColor('#BBDEFB')
+    c_red  = colors.HexColor('#FFCDD2')
+    c_grey = colors.HexColor('#F5F5F5')
+
+    instansi = settings['nama_perusahaan'] if settings else 'RST Slamet Riyadi'
+
+    el = []
+    el.append(Paragraph(instansi.upper(),
+        ParagraphStyle('H1', fontName='Helvetica-Bold', fontSize=13, alignment=1,
+                       textColor=navy, spaceAfter=2)))
+    el.append(Paragraph(f'LAPORAN ABSENSI PEGAWAI',
+        ParagraphStyle('H2', fontName='Helvetica-Bold', fontSize=11, alignment=1, spaceAfter=2)))
+    el.append(Paragraph(f'Periode: {bulan}',
+        ParagraphStyle('H3', fontName='Helvetica', fontSize=9, alignment=1, spaceAfter=8,
+                       textColor=colors.grey)))
+
+    # Info pegawai
+    info_data = [
+        ['Nama', ':', user['nama'], 'NIK/NRP', ':', user['nik'] or '-'],
+        ['Jabatan', ':', user['jabatan'] or '-', 'Departemen', ':', user['dept_nama'] or '-'],
+        ['Shift', ':', f"{user['shift_nama'] or '-'} ({user['shift_masuk'] or '-'} - {user['shift_keluar'] or '-'})", '', '', ''],
+    ]
+    info_tbl = Table(info_data, colWidths=[2.2*cm,0.4*cm,5*cm,2.2*cm,0.4*cm,5*cm])
+    info_tbl.setStyle(TableStyle([
+        ('FONTNAME',(0,0),(-1,-1),'Helvetica'),
+        ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
+        ('FONTNAME',(3,0),(3,-1),'Helvetica-Bold'),
+        ('FONTSIZE',(0,0),(-1,-1),9),
+        ('BOTTOMPADDING',(0,0),(-1,-1),3),
+        ('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F0F4F8')),
+        ('BOX',(0,0),(-1,-1),0.5,colors.HexColor('#CBD5E1')),
+        ('ROWBACKGROUNDS',(0,0),(-1,-1),[colors.HexColor('#F0F4F8'), colors.HexColor('#E8EFF8')]),
+    ]))
+    el.append(info_tbl); el.append(Spacer(1, 0.4*cm))
+
+    # Tabel absensi
+    td = [['No','Tanggal','Hari','Jam Masuk','Jam Keluar','Shift','Jarak','Status','Keterangan']]
+    for i, row in enumerate(rows, 1):
+        tgl = row['tanggal']
+        hari = tgl.strftime('%a') if hasattr(tgl, 'strftime') else '-'
+        td.append([
+            str(i), str(tgl), hari,
+            str(row['jam_masuk'] or '-'), str(row['jam_keluar'] or '-'),
+            row['shift_nama'] or '-',
+            f"{row['jarak_masuk']:.0f}m" if row['jarak_masuk'] else '-',
+            (row['status'] or '-').upper(),
+            row['keterangan'] or '-'
+        ])
+
+    col_w = [0.7*cm,2.3*cm,1.3*cm,2.1*cm,2.1*cm,2.5*cm,1.4*cm,1.6*cm,3*cm]
+    t = Table(td, colWidths=col_w, repeatRows=1)
+    sty = [
+        ('BACKGROUND',(0,0),(-1,0), navy),
+        ('TEXTCOLOR',(0,0),(-1,0), colors.white),
+        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
+        ('FONTSIZE',(0,0),(-1,-1),7.5),
+        ('ALIGN',(0,0),(-1,0),'CENTER'),
+        ('ALIGN',(0,1),(7,-1),'CENTER'),
+        ('ALIGN',(8,1),(8,-1),'LEFT'),
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('GRID',(0,0),(-1,-1),0.4, colors.HexColor('#CBD5E1')),
+        ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, c_grey]),
+        ('BOTTOMPADDING',(0,0),(-1,-1),4),
+        ('TOPPADDING',(0,0),(-1,-1),4),
+    ]
+    sc_map = {'hadir': c_green, 'telat': c_yell, 'izin': c_blue, 'alpha': c_red}
+    for i, row in enumerate(rows, 1):
+        c = sc_map.get(row['status'])
+        if c: sty.append(('BACKGROUND',(7,i),(7,i), c))
+    t.setStyle(TableStyle(sty))
+    el.append(t); el.append(Spacer(1, 0.4*cm))
+
+    # Rekap statistik
+    stat_data = [
+        ['Hadir', str(hadir), 'Telat', str(telat), 'Izin', str(izin), 'Alpha', str(alpha)],
+    ]
+    st = Table(stat_data, colWidths=[2*cm,1.2*cm,2*cm,1.2*cm,2*cm,1.2*cm,2*cm,1.2*cm])
+    st.setStyle(TableStyle([
+        ('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),
+        ('FONTSIZE',(0,0),(-1,-1),9),
+        ('ALIGN',(0,0),(-1,-1),'CENTER'),
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('BACKGROUND',(0,0),(1,0), c_green),
+        ('BACKGROUND',(2,0),(3,0), c_yell),
+        ('BACKGROUND',(4,0),(5,0), c_blue),
+        ('BACKGROUND',(6,0),(7,0), c_red),
+        ('BOX',(0,0),(-1,-1),0.5, colors.HexColor('#CBD5E1')),
+        ('INNERGRID',(0,0),(-1,-1),0.3, colors.HexColor('#CBD5E1')),
+        ('BOTTOMPADDING',(0,0),(-1,-1),5),
+        ('TOPPADDING',(0,0),(-1,-1),5),
+    ]))
+    el.append(st)
+    doc.build(el); out.seek(0)
+
+    safe_name = re.sub(r'[^\w]', '_', user['nama'])
+    return send_file(out, as_attachment=True,
+        download_name=f"absensi_{safe_name}_{bulan}.pdf",
+        mimetype='application/pdf')
+
+
 # ── ADMIN GRAFIK ──────────────────────────────────────────────────────────────
 @app.route('/admin/grafik')
 @admin_required

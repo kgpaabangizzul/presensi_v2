@@ -1,0 +1,200 @@
+{% extends 'admin/layout.html' %}
+{% block page_title %}Laporan Per Pegawai{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+  {# ── FILTER ── #}
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+    <form method="GET" action="{{ url_for('laporan_per_pegawai') }}" class="flex flex-wrap gap-3 items-end">
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Bulan</label>
+        <input type="month" name="bulan" value="{{ bulan }}"
+               class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Departemen</label>
+        <select name="dept_id"
+                class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+          <option value="">Semua Departemen</option>
+          {% for d in daftar_dept %}
+          <option value="{{ d.id }}" {% if dept_id|string == d.id|string %}selected{% endif %}>{{ d.nama }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Kehadiran</label>
+        <select name="status_filter"
+                class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+          <option value="">Semua</option>
+          <option value="baik"   {% if status_filter=='baik'   %}selected{% endif %}>≥ 90% (Baik)</option>
+          <option value="cukup"  {% if status_filter=='cukup'  %}selected{% endif %}>75–89% (Cukup)</option>
+          <option value="kurang" {% if status_filter=='kurang' %}selected{% endif %}>< 75% (Kurang)</option>
+        </select>
+      </div>
+      <button type="submit"
+              class="px-4 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+        Tampilkan
+      </button>
+      {% if dept_id or status_filter %}
+      <a href="{{ url_for('laporan_per_pegawai', bulan=bulan) }}"
+         class="px-3 py-1.5 border border-slate-200 text-slate-500 text-sm rounded-lg hover:bg-slate-50 transition-colors">
+        Reset
+      </a>
+      {% endif %}
+      <span class="ml-auto text-xs text-slate-400 self-end">
+        <strong class="text-slate-700">{{ rekap|length }}</strong> pegawai · hari kerja bulan ini:
+        <strong class="text-slate-700">{{ total_hari_kerja }}</strong> hari
+      </span>
+    </form>
+  </div>
+
+  {# ── RINGKASAN CEPAT ── #}
+  {% if rekap %}
+  {% set avg_pct = (rekap | map(attribute='pct') | sum / rekap|length) | round | int %}
+  {% set jml_baik   = rekap | selectattr('pct','ge',90) | list | length %}
+  {% set jml_cukup  = rekap | selectattr('pct','ge',75) | list | length - jml_baik %}
+  {% set jml_kurang = rekap | length - jml_baik - jml_cukup %}
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div class="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Pegawai</p>
+      <p class="text-3xl font-bold text-slate-700">{{ rekap|length }}</p>
+      <p class="text-xs text-slate-400 mt-1">aktif bulan ini</p>
+    </div>
+    <div class="bg-white rounded-xl border border-emerald-200 shadow-sm p-4">
+      <p class="text-xs font-bold text-emerald-500 uppercase tracking-wider mb-1">✅ Kehadiran Baik</p>
+      <p class="text-3xl font-bold text-emerald-600">{{ jml_baik }}</p>
+      <p class="text-xs text-slate-400 mt-1">≥ 90%</p>
+    </div>
+    <div class="bg-white rounded-xl border border-amber-200 shadow-sm p-4">
+      <p class="text-xs font-bold text-amber-500 uppercase tracking-wider mb-1">⚠️ Perlu Perhatian</p>
+      <p class="text-3xl font-bold text-amber-600">{{ jml_cukup }}</p>
+      <p class="text-xs text-slate-400 mt-1">75 – 89%</p>
+    </div>
+    <div class="bg-white rounded-xl border border-red-200 shadow-sm p-4">
+      <p class="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">❌ Kehadiran Kurang</p>
+      <p class="text-3xl font-bold text-red-600">{{ jml_kurang }}</p>
+      <p class="text-xs text-slate-400 mt-1">< 75%</p>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── TABEL REKAP ── #}
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-100 bg-slate-50">
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Pegawai</th>
+            <th class="text-left px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Departemen</th>
+            <th class="text-center px-3 py-3 text-xs font-bold text-emerald-500 uppercase tracking-wider">Hadir</th>
+            <th class="text-center px-3 py-3 text-xs font-bold text-amber-500 uppercase tracking-wider">Telat</th>
+            <th class="text-center px-3 py-3 text-xs font-bold text-blue-500 uppercase tracking-wider">Izin</th>
+            <th class="text-center px-3 py-3 text-xs font-bold text-red-500 uppercase tracking-wider">Alpha</th>
+            <th class="text-center px-3 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-36">% Kehadiran</th>
+            <th class="px-3 py-3 w-24"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          {% for r in rekap %}
+          <tr class="hover:bg-slate-50 transition-colors">
+
+            {# Pegawai #}
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-3">
+                {% if r.user.foto %}
+                <img src="/static/uploads/photos/{{ r.user.foto }}"
+                     class="w-9 h-9 rounded-xl object-cover flex-shrink-0">
+                {% else %}
+                <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                  {{ r.user.nama[0]|upper }}
+                </div>
+                {% endif %}
+                <div>
+                  <p class="font-semibold text-slate-800">{{ r.user.nama }}</p>
+                  <p class="text-xs text-slate-400">{{ r.user.nik }} · {{ r.user.jabatan or '-' }}</p>
+                </div>
+              </div>
+            </td>
+
+            {# Departemen #}
+            <td class="px-4 py-3">
+              <span class="text-sm text-slate-500">{{ r.user.dept_nama or r.user.departemen or '-' }}</span>
+            </td>
+
+            {# Stats #}
+            <td class="px-3 py-3 text-center">
+              <span class="text-base font-bold text-emerald-600">{{ r.hadir }}</span>
+            </td>
+            <td class="px-3 py-3 text-center">
+              <span class="text-base font-bold text-amber-600">{{ r.telat }}</span>
+            </td>
+            <td class="px-3 py-3 text-center">
+              <span class="text-base font-bold text-blue-600">{{ r.izin }}</span>
+            </td>
+            <td class="px-3 py-3 text-center">
+              <span class="text-base font-bold {{ 'text-red-600' if r.alpha > 0 else 'text-slate-300' }}">{{ r.alpha }}</span>
+            </td>
+
+            {# Progress bar #}
+            <td class="px-3 py-3">
+              <div class="flex items-center gap-2">
+                <div class="flex-1 bg-slate-100 rounded-full h-2 min-w-16">
+                  <div class="h-2 rounded-full transition-all
+                    {% if r.pct >= 90 %}bg-emerald-500
+                    {% elif r.pct >= 75 %}bg-amber-500
+                    {% else %}bg-red-500{% endif %}"
+                    style="width:{{ r.pct }}%"></div>
+                </div>
+                <span class="text-xs font-bold w-9 text-right
+                  {% if r.pct >= 90 %}text-emerald-600
+                  {% elif r.pct >= 75 %}text-amber-600
+                  {% else %}text-red-600{% endif %}">
+                  {{ r.pct }}%
+                </span>
+              </div>
+            </td>
+
+            {# Aksi #}
+            <td class="px-3 py-3">
+              <div class="flex gap-1.5">
+                <a href="{{ url_for('laporan_detail_pegawai', uid=r.user.id, bulan=bulan) }}"
+                   class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition-colors"
+                   title="Lihat detail">
+                  <svg style="width:14px;height:14px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                </a>
+                <a href="{{ url_for('laporan_pegawai_export_excel', uid=r.user.id, bulan=bulan) }}"
+                   class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors"
+                   title="Export Excel">
+                  <svg style="width:14px;height:14px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                </a>
+                <a href="{{ url_for('laporan_pegawai_export_pdf', uid=r.user.id, bulan=bulan) }}"
+                   class="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors"
+                   title="Export PDF">
+                  <svg style="width:14px;height:14px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                  </svg>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center py-16 text-slate-400">
+              <p class="text-4xl mb-2">👤</p>
+              <p class="text-sm">Tidak ada data pegawai</p>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
