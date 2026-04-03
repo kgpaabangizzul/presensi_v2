@@ -55,35 +55,6 @@ Buka browser: **http://localhost:5000**
 |------|-------|----------|
 
 
-## 📁 Struktur Proyek
-```
-absensi/
-├── app.py                 # Main Flask app
-├── requirements.txt       # Dependencies
-├── run.sh                 # Script runner
-├── instance/
-│   └── absensi.db         # Database PostgreSql (auto-created)
-├── static/
-│   └── uploads/photos/    # Foto pegawai & absensi
-└── templates/
-    ├── base.html          # Base template
-    ├── layout.html        # User layout
-    ├── login.html
-    ├── register.html
-    ├── dashboard.html
-    ├── riwayat.html
-    ├── izin.html
-    ├── profil.html
-    └── admin/
-        ├── layout.html    # Admin layout
-        ├── dashboard.html
-        ├── pegawai.html
-        ├── absensi.html
-        ├── izin.html
-        ├── laporan.html
-        ├── grafik.html
-        └── settings.html
-```
 
 ## 🔧 Konfigurasi
 Edit di **Admin → Pengaturan**:
