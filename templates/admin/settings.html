@@ -12,6 +12,10 @@
           style="padding:8px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;background:transparent;color:#64748b">
     🔔 Notifikasi & OTP
   </button>
+  <button onclick="switchTab('keamanan')" id="tab-btn-keamanan"
+          style="padding:8px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;background:transparent;color:#64748b">
+    🔑 Keamanan
+  </button>
 </div>
 
 {# ══════════════════════════════════════════════
@@ -263,10 +267,74 @@
 {# Form hapus logo (tersembunyi) #}
 <form id="formHapusLogo" method="POST" action="/admin/settings/hapus-logo" style="display:none"></form>
 
+{# ══════════════════════════════════════════════
+   TAB 3 — KEAMANAN
+══════════════════════════════════════════════ #}
+<div id="tab-keamanan" style="display:none">
+  <div style="max-width:480px">
+    <div class="card" style="padding:28px">
+      <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px">🔑 Ganti Password Admin</h3>
+      <p style="font-size:13px;color:#64748b;margin-bottom:20px">Ubah password akun administrator Anda</p>
+
+      <form method="POST" action="/admin/settings/ganti-password" style="display:flex;flex-direction:column;gap:16px">
+
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Password Lama</label>
+          <div style="position:relative">
+            <input type="password" name="password_lama" id="adm_pw_lama" required
+              class="input-field" placeholder="Masukkan password saat ini"
+              style="font-size:15px;padding-right:44px" autocomplete="current-password"
+              readonly onfocus="this.removeAttribute('readonly')">
+            <button type="button" onclick="toggleAdmPw('adm_pw_lama','adm_ico_lama')"
+              style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:#94a3b8" id="adm_ico_lama">👁</button>
+          </div>
+        </div>
+
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Password Baru</label>
+          <div style="position:relative">
+            <input type="password" name="password_baru" id="adm_pw_baru" required minlength="6"
+              class="input-field" placeholder="Minimal 6 karakter"
+              style="font-size:15px;padding-right:44px" oninput="cekAdmMatch()"
+              autocomplete="new-password">
+            <button type="button" onclick="toggleAdmPw('adm_pw_baru','adm_ico_baru')"
+              style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:#94a3b8" id="adm_ico_baru">👁</button>
+          </div>
+          <div style="margin-top:6px;display:flex;gap:4px">
+            <div id="adm_sb1" style="height:3px;flex:1;border-radius:2px;background:#e2e8f0;transition:background .2s"></div>
+            <div id="adm_sb2" style="height:3px;flex:1;border-radius:2px;background:#e2e8f0;transition:background .2s"></div>
+            <div id="adm_sb3" style="height:3px;flex:1;border-radius:2px;background:#e2e8f0;transition:background .2s"></div>
+            <div id="adm_sb4" style="height:3px;flex:1;border-radius:2px;background:#e2e8f0;transition:background .2s"></div>
+          </div>
+          <p id="adm_strengthTxt" style="font-size:11px;color:#94a3b8;margin-top:3px"></p>
+        </div>
+
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Konfirmasi Password Baru</label>
+          <div style="position:relative">
+            <input type="password" name="password_konfirm" id="adm_pw_konfirm" required
+              class="input-field" placeholder="Ulangi password baru"
+              style="font-size:15px;padding-right:44px" oninput="cekAdmMatch()"
+              autocomplete="new-password">
+            <button type="button" onclick="toggleAdmPw('adm_pw_konfirm','adm_ico_konfirm')"
+              style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:#94a3b8" id="adm_ico_konfirm">👁</button>
+          </div>
+          <p id="adm_matchMsg" style="font-size:12px;margin-top:5px;min-height:16px"></p>
+        </div>
+
+        <button type="submit" id="adm_btnGantiPw" class="btn-primary"
+          style="padding:14px;font-size:15px;background:linear-gradient(135deg,#0f766e,#0d9488)">
+          Ganti Password
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── Tab switcher ─────────────────────────────────────────────────
 function switchTab(name) {
-  ['umum','notif'].forEach(t => {
+  ['umum','notif','keamanan'].forEach(t => {
     const panel = document.getElementById('tab-' + t);
     const btn   = document.getElementById('tab-btn-' + t);
     const active = (t === name);
@@ -325,7 +393,43 @@ function testKirim(metode) {
     });
 }
 
-// ── Auto-switch ke tab notif jika URL hash #notif ────────────────
+// ── Toggle show/hide password (form keamanan) ────────────────────
+function toggleAdmPw(inputId, icoId) {
+  var inp = document.getElementById(inputId);
+  var ico = document.getElementById(icoId);
+  if (inp.type === 'password') { inp.type = 'text'; ico.textContent = '🙈'; }
+  else { inp.type = 'password'; ico.textContent = '👁'; }
+}
+
+// ── Cek kekuatan & kecocokan password (form keamanan) ────────────
+function cekAdmMatch() {
+  var baru    = document.getElementById('adm_pw_baru').value;
+  var konfirm = document.getElementById('adm_pw_konfirm').value;
+  var msg     = document.getElementById('adm_matchMsg');
+  var btn     = document.getElementById('adm_btnGantiPw');
+  var score = 0;
+  if (baru.length >= 6)  score++;
+  if (baru.length >= 10) score++;
+  if (/[A-Z]/.test(baru) && /[a-z]/.test(baru)) score++;
+  if (/[0-9]/.test(baru) && /[^A-Za-z0-9]/.test(baru)) score++;
+  var colors = ['#ef4444','#f97316','#eab308','#22c55e'];
+  var labels = ['Lemah','Cukup','Kuat','Sangat Kuat'];
+  for (var i = 1; i <= 4; i++) {
+    document.getElementById('adm_sb'+i).style.background = i <= score ? colors[score-1] : '#e2e8f0';
+  }
+  document.getElementById('adm_strengthTxt').textContent = baru.length >= 6 ? (labels[score-1] || '') : '';
+  if (!konfirm) { msg.textContent = ''; btn.disabled = false; btn.style.opacity = '1'; return; }
+  if (baru === konfirm) {
+    msg.textContent = '✓ Password cocok'; msg.style.color = '#16a34a';
+    btn.disabled = false; btn.style.opacity = '1';
+  } else {
+    msg.textContent = '✗ Password tidak cocok'; msg.style.color = '#dc2626';
+    btn.disabled = true; btn.style.opacity = '0.5';
+  }
+}
+
+// ── Auto-switch tab berdasarkan URL hash ─────────────────────────
 if (location.hash === '#notif') switchTab('notif');
+else if (location.hash === '#keamanan') switchTab('keamanan');
 </script>
 {% endblock %}

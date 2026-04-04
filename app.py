@@ -403,7 +403,7 @@ def init_db():
     cur.execute("""
         CREATE TABLE IF NOT EXISTS shift (
             id SERIAL PRIMARY KEY,
-            nama TEXT NOT NULL,
+            nama TEXT NOT NULL UNIQUE,
             jam_masuk TEXT NOT NULL,
             jam_keluar TEXT NOT NULL,
             toleransi_menit INTEGER DEFAULT 15,
@@ -413,6 +413,12 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Tambahkan UNIQUE constraint pada kolom nama jika belum ada (untuk DB yang sudah ada)
+    try:
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS shift_nama_unique ON shift(nama)")
+        conn.commit()
+    except Exception:
+        conn.rollback()
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS departemen_shift (
@@ -615,10 +621,10 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Approval roles default
+    # Seed template surat awal — pakai kolom kode (UNIQUE) agar tidak duplikat saat restart
     cur.execute("""
-        INSERT INTO surat_template (nama, jenis, konten) VALUES
-        ('Surat Perintah Tugas', 'surat_perintah',
+        INSERT INTO surat_template (nama, jenis, kode, konten) VALUES
+        ('Surat Perintah Tugas', 'surat_perintah', 'SPT_DEFAULT',
          'Diperintahkan kepada:
 
 Nama    : {{nama}}
@@ -629,7 +635,7 @@ Untuk melaksanakan tugas:
 {{isi}}
 
 Dilaksanakan mulai tanggal {{tanggal}} s.d. selesai.')
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (kode) DO NOTHING
     """)
     # Tambah kolom logo jika belum ada
     try:
@@ -685,7 +691,7 @@ Dilaksanakan mulai tanggal {{tanggal}} s.d. selesai.')
               ('Shift Malam','21:00','06:00',15,'Shift malam','#6366f1'),
               ('Shift Fleksibel','07:00','16:00',30,'Jam fleksibel','#06b6d4')]
     for s in shifts:
-        cur.execute("INSERT INTO shift (nama,jam_masuk,jam_keluar,toleransi_menit,deskripsi,warna) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", s)
+        cur.execute("INSERT INTO shift (nama,jam_masuk,jam_keluar,toleransi_menit,deskripsi,warna) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (nama) DO NOTHING", s)
 
 
     # ── MODUL SURAT & NOTA DINAS ─────────────────────────────────────────────
@@ -815,7 +821,7 @@ Dilaksanakan mulai tanggal {{tanggal}} s.d. selesai.')
     cur.execute("""
         CREATE TABLE IF NOT EXISTS nota_template (
             id SERIAL PRIMARY KEY,
-            nama TEXT NOT NULL,
+            nama TEXT NOT NULL UNIQUE,
             header TEXT,
             footer TEXT,
             font_size INTEGER DEFAULT 11,
@@ -825,7 +831,13 @@ Dilaksanakan mulai tanggal {{tanggal}} s.d. selesai.')
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    cur.execute("INSERT INTO nota_template (nama,header,footer) VALUES ('Default','','') ON CONFLICT DO NOTHING")
+    # Tambah UNIQUE constraint jika tabel sudah ada sebelumnya (DB lama)
+    try:
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS nota_template_nama_unique ON nota_template(nama)")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    cur.execute("INSERT INTO nota_template (nama,header,footer) VALUES ('Default','','') ON CONFLICT (nama) DO NOTHING")
 
     # ── HAK AKSES ROLE ────────────────────────────────────────────────────────
     cur.execute("""
@@ -1549,12 +1561,22 @@ def admin_shift():
 @admin_required
 def tambah_shift():
     conn = get_db(); cur = q(conn)
+    nama = request.form.get('nama', '').strip()
+    if not nama:
+        flash('Nama shift tidak boleh kosong.', 'error')
+        cur.close(); conn.close()
+        return redirect(url_for('admin_shift'))
+    cur.execute("SELECT id FROM shift WHERE LOWER(nama)=LOWER(%s)", (nama,))
+    if cur.fetchone():
+        flash(f'Shift "{nama}" sudah ada, tidak bisa duplikat.', 'error')
+        cur.close(); conn.close()
+        return redirect(url_for('admin_shift'))
     try:
         cur.execute("INSERT INTO shift (nama,jam_masuk,jam_keluar,toleransi_menit,deskripsi,warna) VALUES (%s,%s,%s,%s,%s,%s)",
-            (request.form['nama'], request.form['jam_masuk'], request.form['jam_keluar'],
+            (nama, request.form['jam_masuk'], request.form['jam_keluar'],
              int(request.form.get('toleransi_menit', 15)), request.form.get('deskripsi',''),
              request.form.get('warna','#10b981')))
-        conn.commit(); flash(f'Shift "{request.form["nama"]}" ditambahkan!', 'success')
+        conn.commit(); flash(f'Shift "{nama}" ditambahkan!', 'success')
     except Exception as e:
         conn.rollback(); flash('Gagal: '+str(e), 'error')
     cur.close(); conn.close()
@@ -2396,6 +2418,35 @@ def admin_settings():
     settings = cur.fetchone()
     cur.close(); conn.close()
     return render_template('admin/settings.html', settings=settings)
+
+@app.route('/admin/settings/ganti-password', methods=['POST'])
+@admin_required
+def admin_ganti_password_sendiri():
+    uid = session['user_id']
+    pw_lama     = request.form.get('password_lama', '')
+    pw_baru     = request.form.get('password_baru', '')
+    pw_konfirm  = request.form.get('password_konfirm', '')
+    if not pw_baru or len(pw_baru) < 6:
+        flash('Password baru minimal 6 karakter.', 'error')
+        return redirect(url_for('admin_settings') + '#keamanan')
+    if pw_baru != pw_konfirm:
+        flash('Konfirmasi password tidak cocok.', 'error')
+        return redirect(url_for('admin_settings') + '#keamanan')
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT password FROM users WHERE id=%s", (uid,))
+    user = cur.fetchone()
+    if not user or not check_password_hash(user['password'], pw_lama):
+        flash('Password lama salah.', 'error')
+        cur.close(); conn.close()
+        return redirect(url_for('admin_settings') + '#keamanan')
+    cur.execute("UPDATE users SET password=%s WHERE id=%s", (generate_password_hash(pw_baru), uid))
+    conn.commit()
+    log_audit(conn, 'PASSWORD', 'settings',
+        deskripsi=f'Admin ganti password: {session.get("nama")}',
+        ref_id=uid, ref_table='users')
+    cur.close(); conn.close()
+    flash('Password admin berhasil diubah!', 'success')
+    return redirect(url_for('admin_settings') + '#keamanan')
 
 @app.route('/admin/settings/hapus-logo', methods=['POST'])
 @admin_required
