@@ -672,6 +672,13 @@ Dilaksanakan mulai tanggal {{tanggal}} s.d. selesai.')
         )
     """)
 
+    # Migration: tambah kolom tanggal_expired jika DB sudah ada sebelumnya
+    try:
+        cur.execute("ALTER TABLE dosir_file ADD COLUMN IF NOT EXISTS tanggal_expired DATE")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     admin_pass = generate_password_hash('admin123')
     cur.execute("""INSERT INTO users (nik,nama,email,password,jabatan,departemen,role,status)
         VALUES ('ADMIN001','Administrator','admin@absensi.com',%s,'System Administrator','IT','admin','active')
@@ -2649,7 +2656,7 @@ def dosir():
     uploads = {r['jenis_id']: dict(r) for r in cur.fetchall()}
 
     cur.close(); conn.close()
-    return render_template('dosir.html', jenis_list=jenis_list, uploads=uploads, user=user)
+    return render_template('dosir.html', jenis_list=jenis_list, uploads=uploads, user=user, today=date.today())
 
 
 @app.route('/dosir/upload/<int:jid>', methods=['POST'])
@@ -2666,6 +2673,8 @@ def dosir_upload(jid):
 
     f = request.files.get('file')
     keterangan = request.form.get('keterangan', '').strip()
+    tgl_expired_raw = request.form.get('tanggal_expired', '').strip()
+    tanggal_expired = tgl_expired_raw if tgl_expired_raw else None
     if not f or not f.filename:
         flash('Pilih file terlebih dahulu.', 'error')
         cur.close(); conn.close()
@@ -2683,13 +2692,13 @@ def dosir_upload(jid):
     fn = secure_filename(f"dosir_{uid}_{jid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
     f.save(os.path.join(dosir_folder, fn))
 
-    cur.execute("""INSERT INTO dosir_file (user_id, jenis_id, filename, original_name, keterangan, status)
-        VALUES (%s,%s,%s,%s,%s,'pending')
+    cur.execute("""INSERT INTO dosir_file (user_id, jenis_id, filename, original_name, keterangan, tanggal_expired, status)
+        VALUES (%s,%s,%s,%s,%s,%s,'pending')
         ON CONFLICT (user_id, jenis_id) DO UPDATE
         SET filename=EXCLUDED.filename, original_name=EXCLUDED.original_name,
-            keterangan=EXCLUDED.keterangan, status='pending',
-            catatan_admin=NULL, uploaded_at=CURRENT_TIMESTAMP, verified_at=NULL""",
-        (uid, jid, fn, original, keterangan))
+            keterangan=EXCLUDED.keterangan, tanggal_expired=EXCLUDED.tanggal_expired,
+            status='pending', catatan_admin=NULL, uploaded_at=CURRENT_TIMESTAMP, verified_at=NULL""",
+        (uid, jid, fn, original, keterangan, tanggal_expired))
     conn.commit()
     cur.close(); conn.close()
     flash(f'Dokumen "{jenis["nama"]}" berhasil diupload. Menunggu verifikasi admin.', 'success')
@@ -2726,12 +2735,23 @@ def admin_dosir():
         WHERE dj.aktif=1 ORDER BY dj.urutan, dj.nama""")
     jenis_list = cur.fetchall()
     # Statistik upload per jenis
-    cur.execute("""SELECT jenis_id,
-        COUNT(*) as total,
-        SUM(CASE WHEN status='verified' THEN 1 ELSE 0 END) as verified,
-        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending,
-        SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) as rejected
-        FROM dosir_file GROUP BY jenis_id""")
+    try:
+        cur.execute("""SELECT jenis_id,
+            COUNT(*) as total,
+            SUM(CASE WHEN status='verified' THEN 1 ELSE 0 END) as verified,
+            SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) as rejected,
+            SUM(CASE WHEN tanggal_expired IS NOT NULL AND tanggal_expired < CURRENT_DATE THEN 1 ELSE 0 END) as expired
+            FROM dosir_file GROUP BY jenis_id""")
+    except Exception:
+        conn.rollback()
+        cur.execute("""SELECT jenis_id,
+            COUNT(*) as total,
+            SUM(CASE WHEN status='verified' THEN 1 ELSE 0 END) as verified,
+            SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) as rejected,
+            0 as expired
+            FROM dosir_file GROUP BY jenis_id""")
     stats = {r['jenis_id']: dict(r) for r in cur.fetchall()}
     cur.close(); conn.close()
     return render_template('admin/dosir.html', depts=depts, jenis_list=jenis_list, stats=stats)
@@ -2790,38 +2810,73 @@ def admin_dosir_files():
     status_filter = request.args.get('status', '')
     cur.execute("SELECT * FROM departemen WHERE aktif=1 ORDER BY nama")
     depts = cur.fetchall()
-    query = """SELECT df.*, u.nama as user_nama, u.nik, d.nama as dept_nama,
-        dj.nama as jenis_nama, dj.wajib
-        FROM dosir_file df
-        JOIN users u ON df.user_id=u.id
-        LEFT JOIN departemen d ON u.departemen_id=d.id
-        JOIN dosir_jenis dj ON df.jenis_id=dj.id
-        WHERE 1=1"""
     params = []
+    where = " WHERE 1=1"
     if dept_id:
-        query += " AND u.departemen_id=%s"; params.append(dept_id)
-    if status_filter:
-        query += " AND df.status=%s"; params.append(status_filter)
-    query += " ORDER BY df.uploaded_at DESC"
-    cur.execute(query, params)
+        where += " AND u.departemen_id=%s"; params.append(dept_id)
+    if status_filter == 'expired':
+        where += " AND df.tanggal_expired IS NOT NULL AND df.tanggal_expired < CURRENT_DATE"
+    elif status_filter:
+        where += " AND df.status=%s"; params.append(status_filter)
+    try:
+        query = """SELECT df.*,
+            u.nama as user_nama, u.nik, d.nama as dept_nama,
+            dj.nama as jenis_nama, dj.wajib,
+            CASE WHEN df.tanggal_expired IS NOT NULL AND df.tanggal_expired < CURRENT_DATE THEN TRUE ELSE FALSE END as is_expired
+            FROM dosir_file df
+            JOIN users u ON df.user_id=u.id
+            LEFT JOIN departemen d ON u.departemen_id=d.id
+            JOIN dosir_jenis dj ON df.jenis_id=dj.id""" + where + " ORDER BY df.uploaded_at DESC"
+        cur.execute(query, params)
+    except Exception:
+        conn.rollback()
+        query = """SELECT df.*,
+            u.nama as user_nama, u.nik, d.nama as dept_nama,
+            dj.nama as jenis_nama, dj.wajib,
+            FALSE as is_expired
+            FROM dosir_file df
+            JOIN users u ON df.user_id=u.id
+            LEFT JOIN departemen d ON u.departemen_id=d.id
+            JOIN dosir_jenis dj ON df.jenis_id=dj.id""" + where + " ORDER BY df.uploaded_at DESC"
+        cur.execute(query, params)
     files = cur.fetchall()
     cur.close(); conn.close()
+
+    # Build stats dict keyed by jenis_nama so the template can sum verified counts
+    stats = {}
+    for f in files:
+        key = f['jenis_nama'] or 'Lainnya'
+        if key not in stats:
+            stats[key] = {'total': 0, 'verified': 0, 'pending': 0, 'rejected': 0}
+        stats[key]['total'] += 1
+        status_val = f.get('status', '')
+        if status_val == 'verified':
+            stats[key]['verified'] += 1
+        elif status_val == 'rejected':
+            stats[key]['rejected'] += 1
+        else:
+            stats[key]['pending'] += 1
+
     return render_template('admin/dosir_files.html', files=files, depts=depts,
-        dept_id=dept_id, status_filter=status_filter)
+        dept_id=dept_id, status_filter=status_filter, today=date.today(), stats=stats)
 
 
 @app.route('/admin/dosir/verify/<int:fid>/<action>', methods=['POST'])
 @admin_required
 def admin_dosir_verify(fid, action):
     catatan = request.form.get('catatan','').strip()
+    tgl_expired_raw = request.form.get('tanggal_expired','').strip()
+    tanggal_expired = tgl_expired_raw if tgl_expired_raw else None
     conn = get_db(); cur = q(conn)
     if action == 'verify':
         cur.execute("""UPDATE dosir_file SET status='verified', catatan_admin=%s,
-            verified_at=CURRENT_TIMESTAMP WHERE id=%s""", (catatan, fid))
+            tanggal_expired=COALESCE(%s::DATE, tanggal_expired),
+            verified_at=CURRENT_TIMESTAMP WHERE id=%s""", (catatan, tanggal_expired, fid))
         flash('Dokumen berhasil diverifikasi.', 'success')
     elif action == 'reject':
         cur.execute("""UPDATE dosir_file SET status='rejected', catatan_admin=%s,
-            verified_at=CURRENT_TIMESTAMP WHERE id=%s""", (catatan, fid))
+            tanggal_expired=COALESCE(%s::DATE, tanggal_expired),
+            verified_at=CURRENT_TIMESTAMP WHERE id=%s""", (catatan, tanggal_expired, fid))
         flash('Dokumen ditolak.', 'info')
     conn.commit(); cur.close(); conn.close()
     return redirect(url_for('admin_dosir_files', **request.args))
@@ -4182,8 +4237,46 @@ def admin_test_notif():
     return jsonify(success=False, message=err)
 
 
+def run_migrations():
+    """Jalankan migrasi kolom baru secara terpisah — aman dipanggil tiap restart."""
+    migrations = [
+        "ALTER TABLE dosir_file ADD COLUMN IF NOT EXISTS tanggal_expired DATE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS nip TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS jabatan_kode TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS ttd_image TEXT",
+        "ALTER TABLE nota_dinas ADD COLUMN IF NOT EXISTS dasar TEXT",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS logo TEXT",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS smtp_host TEXT DEFAULT ''",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS smtp_port INTEGER DEFAULT 587",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS smtp_user TEXT DEFAULT ''",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS smtp_pass TEXT DEFAULT ''",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS smtp_from_name TEXT DEFAULT 'Presensi Digital'",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS smtp_tls BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE settings ADD COLUMN IF NOT EXISTS fonnte_token TEXT DEFAULT ''",
+    ]
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        for sql in migrations:
+            try:
+                cur.execute(sql)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"[migration] skip: {e}")
+        cur.close()
+        conn.close()
+        print("[migration] selesai.")
+    except Exception as e:
+        print(f"[migration] error koneksi: {e}")
+
+
 # Jalankan init_db saat modul dimuat (termasuk saat dijalankan via Gunicorn)
 with app.app_context():
+    try:
+        run_migrations()
+    except Exception as _e:
+        print(f"[migration] warning: {_e}")
     try:
         init_db()
     except Exception as _e:

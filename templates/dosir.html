@@ -9,12 +9,16 @@
 .badge-pending{background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
 .badge-rejected{background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
 .badge-empty{background:#f1f5f9;color:#64748b;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600}
+.badge-expired{background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
 .upload-zone{border:2px dashed #cbd5e1;border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:.2s;background:#f8fafc}
 .upload-zone:hover{border-color:#3b82f6;background:#eff6ff}
 .upload-zone.dragging{border-color:#3b82f6;background:#dbeafe}
 input[type=file]{display:none}
 .progress-bar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:10px}
 .progress-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#06b6d4);border-radius:99px;transition:width .3s}
+.form-label{font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:4px}
+.form-input{width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff}
+.form-input:focus{outline:none;border-color:#3b82f6}
 </style>
 
 <!-- Header -->
@@ -38,7 +42,7 @@ input[type=file]{display:none}
     <div class="progress-bar">
       <div class="progress-fill" style="width:{{ (verified/total*100)|int if total > 0 else 0 }}%"></div>
     </div>
-    <div style="display:flex;gap:14px;margin-top:8px">
+    <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap">
       <span style="font-size:11px;color:#6ee7b7">✓ {{ verified }} Terverifikasi</span>
       <span style="font-size:11px;color:#fde68a">⏳ {{ done - verified }} Pending</span>
       <span style="font-size:11px;color:#fca5a5">✗ {{ uploads.values()|selectattr('status','equalto','rejected')|list|length }} Ditolak</span>
@@ -68,6 +72,7 @@ input[type=file]{display:none}
 
   {% for j in jenis_list %}
   {% set upload = uploads.get(j.id) %}
+  {% set is_expired = upload and upload.tanggal_expired and upload.tanggal_expired < today %}
   <div class="dosir-card {{ 'wajib' if j.wajib else 'opsional' }}">
     <!-- Card header -->
     <div style="padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
@@ -81,11 +86,14 @@ input[type=file]{display:none}
         {% if j.deskripsi %}<p style="font-size:12px;color:#64748b;margin-top:4px">{{ j.deskripsi }}</p>{% endif %}
       </div>
       <!-- Status badge -->
-      {% if upload %}
-        {% if upload.status == 'verified' %}<span class="badge-verified">✓ Terverifikasi</span>
-        {% elif upload.status == 'pending' %}<span class="badge-pending">⏳ Menunggu</span>
-        {% elif upload.status == 'rejected' %}<span class="badge-rejected">✗ Ditolak</span>{% endif %}
-      {% else %}<span class="badge-empty">Belum Upload</span>{% endif %}
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        {% if upload %}
+          {% if is_expired %}<span class="badge-expired">⚠️ Kadaluarsa</span>
+          {% elif upload.status == 'verified' %}<span class="badge-verified">✓ Terverifikasi</span>
+          {% elif upload.status == 'pending' %}<span class="badge-pending">⏳ Menunggu</span>
+          {% elif upload.status == 'rejected' %}<span class="badge-rejected">✗ Ditolak</span>{% endif %}
+        {% else %}<span class="badge-empty">Belum Upload</span>{% endif %}
+      </div>
     </div>
 
     {% if upload %}
@@ -96,7 +104,7 @@ input[type=file]{display:none}
           <span style="font-size:20px">{{ '📄' if upload.filename.endswith('.pdf') else '🖼️' }}</span>
           <div>
             <p style="font-size:12px;font-weight:600;color:#1e293b">{{ upload.original_name or upload.filename }}</p>
-            <p style="font-size:11px;color:#94a3b8">{{ upload.uploaded_at.strftime('%d %b %Y %H:%M') if upload.uploaded_at else '-' }}</p>
+            <p style="font-size:11px;color:#94a3b8">Upload: {{ upload.uploaded_at.strftime('%d %b %Y %H:%M') if upload.uploaded_at else '-' }}</p>
           </div>
         </div>
         <a href="/dosir/file/{{ upload.id }}" target="_blank"
@@ -104,6 +112,19 @@ input[type=file]{display:none}
           👁 Lihat File
         </a>
       </div>
+
+      <!-- Tanggal Expired Info -->
+      {% if upload.tanggal_expired %}
+      <div style="margin-top:8px;padding:7px 10px;border-radius:8px;
+        background:{{ '#fee2e2' if is_expired else '#f0fdf4' }};
+        border-left:3px solid {{ '#ef4444' if is_expired else '#10b981' }}">
+        <p style="font-size:11px;font-weight:600;color:{{ '#991b1b' if is_expired else '#065f46' }};margin:0">
+          📅 Kadaluarsa: {{ upload.tanggal_expired.strftime('%d %B %Y') }}
+          {% if is_expired %} — <strong>Sudah kadaluarsa, harap upload ulang!</strong>{% endif %}
+        </p>
+      </div>
+      {% endif %}
+
       {% if upload.catatan_admin %}
       <div style="margin-top:8px;padding:8px 10px;background:{{ '#d1fae5' if upload.status=='verified' else '#fee2e2' }};border-radius:8px">
         <p style="font-size:11px;font-weight:600;color:{{ '#065f46' if upload.status=='verified' else '#991b1b' }}">
@@ -114,9 +135,14 @@ input[type=file]{display:none}
     </div>
     {% endif %}
 
-    <!-- Upload form -->
-    {% if not upload or upload.status == 'rejected' %}
+    <!-- Upload form: tampil jika belum upload, ditolak, atau kadaluarsa -->
+    {% if not upload or upload.status == 'rejected' or is_expired %}
     <div style="padding:0 16px 16px">
+      {% if is_expired %}
+      <p style="font-size:12px;color:#b45309;font-weight:600;margin-bottom:8px;padding:8px 10px;background:#fffbeb;border-radius:8px">
+        ⚠️ Dokumen kadaluarsa — silakan upload dokumen yang masih berlaku.
+      </p>
+      {% endif %}
       <form method="POST" action="/dosir/upload/{{ j.id }}" enctype="multipart/form-data" id="form-{{ j.id }}">
         <div class="upload-zone" onclick="document.getElementById('file-{{ j.id }}').click()"
           ondrop="handleDrop(event,'{{ j.id }}')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
@@ -132,8 +158,19 @@ input[type=file]{display:none}
             <p style="font-size:11px;color:#64748b">Siap diupload</p>
           </div>
         </div>
-        <input type="text" name="keterangan" placeholder="Keterangan (opsional)"
-          style="width:100%;margin-top:8px;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box">
+        <input type="text" name="keterangan" placeholder="Keterangan (opsional)" class="form-input"
+          style="margin-top:8px">
+        <!-- Tanggal Expired -->
+        <div style="margin-top:8px">
+          <label class="form-label" for="expired-{{ j.id }}">
+            📅 Tanggal Kadaluarsa Dokumen
+            <span style="color:#94a3b8;font-weight:400">(opsional — jika dokumen memiliki masa berlaku)</span>
+          </label>
+          <input type="date" id="expired-{{ j.id }}" name="tanggal_expired"
+            value="{{ upload.tanggal_expired.strftime('%Y-%m-%d') if upload and upload.tanggal_expired else '' }}"
+            min="{{ today.strftime('%Y-%m-%d') }}"
+            class="form-input">
+        </div>
         <button type="submit" id="btn-{{ j.id }}" disabled
           style="width:100%;margin-top:8px;background:#3b82f6;color:#fff;font-weight:700;padding:11px;border-radius:10px;border:none;cursor:pointer;font-size:13px;opacity:.45;transition:.2s"
           onclick="return validateForm('{{ j.id }}')">
@@ -141,18 +178,51 @@ input[type=file]{display:none}
         </button>
       </form>
     </div>
-    {% elif upload.status == 'verified' %}
+    {% elif upload.status == 'verified' and not is_expired %}
     <div style="padding:0 16px 14px">
       <details>
         <summary style="font-size:12px;color:#3b82f6;cursor:pointer;font-weight:600">🔄 Upload Ulang</summary>
         <div style="margin-top:10px">
           <form method="POST" action="/dosir/upload/{{ j.id }}" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required
-              style="width:100%;padding:9px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;box-sizing:border-box">
-            <input type="text" name="keterangan" placeholder="Keterangan"
-              style="width:100%;margin-top:6px;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;box-sizing:border-box">
+            <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required class="form-input"
+              style="padding:9px">
+            <input type="text" name="keterangan" placeholder="Keterangan" class="form-input"
+              style="margin-top:6px">
+            <!-- Tanggal Expired saat upload ulang -->
+            <div style="margin-top:6px">
+              <label class="form-label">📅 Tanggal Kadaluarsa Baru <span style="color:#94a3b8;font-weight:400">(opsional)</span></label>
+              <input type="date" name="tanggal_expired"
+                value="{{ upload.tanggal_expired.strftime('%Y-%m-%d') if upload.tanggal_expired else '' }}"
+                min="{{ today.strftime('%Y-%m-%d') }}"
+                class="form-input">
+            </div>
             <button type="submit" style="width:100%;margin-top:6px;background:#64748b;color:#fff;font-weight:600;padding:10px;border-radius:10px;border:none;cursor:pointer;font-size:12px">
               Upload Ulang
+            </button>
+          </form>
+        </div>
+      </details>
+    </div>
+    {% elif upload.status == 'pending' %}
+    <!-- Pending: tampilkan opsi edit tanggal expired saja -->
+    <div style="padding:0 16px 14px">
+      <details>
+        <summary style="font-size:12px;color:#f59e0b;cursor:pointer;font-weight:600">📅 Perbarui Tanggal Kadaluarsa</summary>
+        <div style="margin-top:10px">
+          <form method="POST" action="/dosir/upload/{{ j.id }}" enctype="multipart/form-data">
+            <p style="font-size:12px;color:#64748b;margin-bottom:8px">Upload file baru jika ingin mengubah dokumen, atau isi tanggal kadaluarsa saja.</p>
+            <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" class="form-input" style="padding:9px">
+            <input type="text" name="keterangan" placeholder="Keterangan"
+              value="{{ upload.keterangan or '' }}" class="form-input" style="margin-top:6px">
+            <div style="margin-top:6px">
+              <label class="form-label">📅 Tanggal Kadaluarsa <span style="color:#94a3b8;font-weight:400">(opsional)</span></label>
+              <input type="date" name="tanggal_expired"
+                value="{{ upload.tanggal_expired.strftime('%Y-%m-%d') if upload.tanggal_expired else '' }}"
+                min="{{ today.strftime('%Y-%m-%d') }}"
+                class="form-input">
+            </div>
+            <button type="submit" style="width:100%;margin-top:6px;background:#64748b;color:#fff;font-weight:600;padding:10px;border-radius:10px;border:none;cursor:pointer;font-size:12px">
+              Perbarui
             </button>
           </form>
         </div>

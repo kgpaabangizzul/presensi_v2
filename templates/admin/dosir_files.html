@@ -6,9 +6,11 @@
 .badge-verified{background:#d1fae5;color:#065f46;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
 .badge-pending{background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
 .badge-rejected{background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.badge-expired{background:#fde68a;color:#78350f;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;border:1px solid #f59e0b}
 .btn-verify{background:#10b981;color:#fff;font-weight:700;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px}
 .btn-reject{background:#ef4444;color:#fff;font-weight:600;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px}
 .input-field{width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:12px;color:#1e293b;box-sizing:border-box}
+.expired-row{background:#fffbeb !important}
 </style>
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -41,9 +43,10 @@
       <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px">Status</label>
       <select name="status" class="input-field" style="padding:9px 12px">
         <option value="">Semua Status</option>
-        <option value="pending" {{ 'selected' if status_filter=='pending' }}>⏳ Pending</option>
-        <option value="verified" {{ 'selected' if status_filter=='verified' }}>✓ Terverifikasi</option>
-        <option value="rejected" {{ 'selected' if status_filter=='rejected' }}>✗ Ditolak</option>
+        <option value="pending"   {{ 'selected' if status_filter=='pending' }}>⏳ Pending</option>
+        <option value="verified"  {{ 'selected' if status_filter=='verified' }}>✓ Terverifikasi</option>
+        <option value="rejected"  {{ 'selected' if status_filter=='rejected' }}>✗ Ditolak</option>
+        <option value="expired"   {{ 'selected' if status_filter=='expired' }}>⚠️ Expired</option>
       </select>
     </div>
     <button type="submit" style="background:#3b82f6;color:#fff;font-weight:700;padding:9px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px">Filter</button>
@@ -52,7 +55,7 @@
 </div>
 
 <!-- Stats bar -->
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
   <div style="background:#fef3c7;border-radius:12px;padding:12px;text-align:center">
     <p style="font-size:22px;font-weight:800;color:#92400e">{{ files|selectattr('status','equalto','pending')|list|length }}</p>
     <p style="font-size:11px;color:#b45309">Menunggu Review</p>
@@ -64,6 +67,10 @@
   <div style="background:#fee2e2;border-radius:12px;padding:12px;text-align:center">
     <p style="font-size:22px;font-weight:800;color:#991b1b">{{ files|selectattr('status','equalto','rejected')|list|length }}</p>
     <p style="font-size:11px;color:#b91c1c">Ditolak</p>
+  </div>
+  <div style="background:#fde68a;border-radius:12px;padding:12px;text-align:center;border:1px solid #f59e0b">
+    <p style="font-size:22px;font-weight:800;color:#78350f">{{ files|selectattr('is_expired')|list|length }}</p>
+    <p style="font-size:11px;color:#92400e">Expired</p>
   </div>
 </div>
 
@@ -77,7 +84,7 @@
 <!-- Mobile cards -->
 <div class="sm:hidden">
 {% for f in files %}
-<div class="card">
+<div class="card" {% if f.is_expired %}style="border:1px solid #f59e0b;background:#fffbeb"{% endif %}>
   <div style="padding:14px 16px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
       <div>
@@ -85,10 +92,27 @@
         <p style="font-size:11px;color:#64748b">{{ f.nik }} · {{ f.dept_nama or '-' }}</p>
         <p style="font-size:12px;font-weight:600;color:#3b82f6;margin-top:4px">{{ f.jenis_nama }}</p>
       </div>
-      {% if f.status=='verified' %}<span class="badge-verified">✓ Verified</span>
-      {% elif f.status=='pending' %}<span class="badge-pending">⏳ Pending</span>
-      {% else %}<span class="badge-rejected">✗ Ditolak</span>{% endif %}
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        {% if f.is_expired %}<span class="badge-expired">⚠️ Expired</span>{% endif %}
+        {% if f.status=='verified' %}<span class="badge-verified">✓ Verified</span>
+        {% elif f.status=='pending' %}<span class="badge-pending">⏳ Pending</span>
+        {% else %}<span class="badge-rejected">✗ Ditolak</span>{% endif %}
+      </div>
     </div>
+
+    <!-- Info expired -->
+    {% if f.tanggal_expired %}
+    <div style="display:flex;align-items:center;gap:6px;background:{% if f.is_expired %}#fef3c7{% else %}#f0fdf4{% endif %};border-radius:8px;padding:7px 10px;margin-bottom:8px;font-size:11px">
+      <span>📅</span>
+      <span style="color:#374151">Expired:
+        <strong style="color:{% if f.is_expired %}#b45309{% else %}#065f46{% endif %}">
+          {{ f.tanggal_expired.strftime('%d %b %Y') if f.tanggal_expired else '-' }}
+        </strong>
+        {% if f.is_expired %}<span style="color:#dc2626;font-weight:700"> · Sudah Kadaluarsa</span>{% endif %}
+      </span>
+    </div>
+    {% endif %}
+
     <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border-radius:10px;padding:10px;margin-bottom:10px">
       <span style="font-size:20px">{{ '📄' if f.filename.endswith('.pdf') else '🖼️' }}</span>
       <div style="flex:1">
@@ -103,10 +127,17 @@
     {% if f.catatan_admin %}
     <p style="font-size:11px;color:#64748b;margin-bottom:8px">💬 {{ f.catatan_admin }}</p>
     {% endif %}
+
     {% if f.status == 'pending' %}
     <form method="POST" action="/admin/dosir/verify/{{ f.id }}/verify?{{ request.query_string.decode() }}"
       id="vform-m-{{ f.id }}" style="display:flex;flex-direction:column;gap:6px">
       <input type="text" name="catatan" class="input-field" placeholder="Catatan (opsional)">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:3px">📅 Tanggal Expired (opsional)</label>
+        <input type="date" name="tanggal_expired" class="input-field"
+          value="{{ f.tanggal_expired.strftime('%Y-%m-%d') if f.tanggal_expired else '' }}"
+          min="{{ today.strftime('%Y-%m-%d') }}">
+      </div>
       <div style="display:flex;gap:8px">
         <button type="submit" class="btn-verify" style="flex:1">✓ Verifikasi</button>
         <button type="button" onclick="switchToReject('m',{{ f.id }})" class="btn-reject" style="flex:1">✗ Tolak</button>
@@ -119,6 +150,21 @@
         <button type="button" onclick="submitReject('m',{{ f.id }})" class="btn-reject" style="flex:1">✗ Konfirmasi Tolak</button>
         <button type="button" onclick="cancelReject('m',{{ f.id }})" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:12px">Batal</button>
       </div>
+    </form>
+
+    {% elif f.status == 'verified' %}
+    <!-- Update tanggal expired untuk dokumen yang sudah verified -->
+    <form method="POST" action="/admin/dosir/verify/{{ f.id }}/verify?{{ request.query_string.decode() }}"
+      style="display:flex;flex-direction:column;gap:6px">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:3px">📅 Update Tanggal Expired</label>
+        <input type="date" name="tanggal_expired" class="input-field"
+          value="{{ f.tanggal_expired.strftime('%Y-%m-%d') if f.tanggal_expired else '' }}">
+        <input type="hidden" name="catatan" value="{{ f.catatan_admin or '' }}">
+      </div>
+      <button type="submit" style="background:#f59e0b;color:#fff;font-weight:700;padding:7px;border-radius:8px;border:none;cursor:pointer;font-size:12px">
+        💾 Simpan Expired
+      </button>
     </form>
     {% endif %}
   </div>
@@ -135,12 +181,13 @@
         <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Jenis Dokumen</th>
         <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">File</th>
         <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Status</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Tgl Expired</th>
         <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Aksi</th>
       </tr>
     </thead>
     <tbody>
       {% for f in files %}
-      <tr style="border-bottom:1px solid #f1f5f9">
+      <tr style="border-bottom:1px solid #f1f5f9{% if f.is_expired %};background:#fffbeb{% endif %}">
         <td style="padding:12px 14px">
           <p style="font-weight:700;color:#1e293b">{{ f.user_nama }}</p>
           <p style="font-size:11px;color:#64748b;margin-top:2px">{{ f.nik }} · {{ f.dept_nama or '-' }}</p>
@@ -163,15 +210,38 @@
           </a>
         </td>
         <td style="padding:12px 14px">
+          {% if f.is_expired %}<span class="badge-expired" style="display:block;margin-bottom:4px">⚠️ Expired</span>{% endif %}
           {% if f.status=='verified' %}<span class="badge-verified">✓ Terverifikasi</span>
           {% elif f.status=='pending' %}<span class="badge-pending">⏳ Menunggu</span>
           {% else %}<span class="badge-rejected">✗ Ditolak</span>{% endif %}
           {% if f.catatan_admin %}<p style="font-size:10px;color:#64748b;margin-top:4px">{{ f.catatan_admin }}</p>{% endif %}
         </td>
-        <td style="padding:12px 14px;min-width:200px">
+        <td style="padding:12px 14px;white-space:nowrap">
+          {% if f.tanggal_expired %}
+            <p style="font-size:12px;font-weight:700;color:{% if f.is_expired %}#dc2626{% else %}#065f46{% endif %}">
+              {{ f.tanggal_expired.strftime('%d %b %Y') }}
+            </p>
+            {% if f.is_expired %}
+            <p style="font-size:10px;color:#dc2626">Sudah kadaluarsa</p>
+            {% else %}
+            <p style="font-size:10px;color:#94a3b8">
+              {{ (f.tanggal_expired - today).days }} hari lagi
+            </p>
+            {% endif %}
+          {% else %}
+            <span style="font-size:12px;color:#94a3b8">—</span>
+          {% endif %}
+        </td>
+        <td style="padding:12px 14px;min-width:220px">
           {% if f.status == 'pending' %}
           <form method="POST" action="/admin/dosir/verify/{{ f.id }}/verify?{{ request.query_string.decode() }}" style="display:flex;flex-direction:column;gap:5px" id="vform-d-{{ f.id }}">
             <input type="text" name="catatan" class="input-field" placeholder="Catatan opsional">
+            <div>
+              <label style="font-size:10px;font-weight:600;color:#64748b;display:block;margin-bottom:2px">📅 Tgl Expired</label>
+              <input type="date" name="tanggal_expired" class="input-field"
+                value="{{ f.tanggal_expired.strftime('%Y-%m-%d') if f.tanggal_expired else '' }}"
+                min="{{ today.strftime('%Y-%m-%d') }}">
+            </div>
             <div style="display:flex;gap:6px">
               <button type="submit" class="btn-verify" style="flex:1;padding:7px">✓ Verifikasi</button>
               <button type="button" onclick="switchToReject('d',{{ f.id }})" class="btn-reject" style="flex:1;padding:7px">✗ Tolak</button>
@@ -185,6 +255,22 @@
               <button type="button" onclick="cancelReject('d',{{ f.id }})" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:7px;border-radius:8px;border:none;cursor:pointer;font-size:12px">Batal</button>
             </div>
           </form>
+
+          {% elif f.status == 'verified' %}
+          <!-- Update tanggal expired untuk dokumen verified -->
+          <form method="POST" action="/admin/dosir/verify/{{ f.id }}/verify?{{ request.query_string.decode() }}"
+            style="display:flex;flex-direction:column;gap:5px">
+            <input type="hidden" name="catatan" value="{{ f.catatan_admin or '' }}">
+            <div>
+              <label style="font-size:10px;font-weight:600;color:#64748b;display:block;margin-bottom:2px">📅 Update Tgl Expired</label>
+              <input type="date" name="tanggal_expired" class="input-field"
+                value="{{ f.tanggal_expired.strftime('%Y-%m-%d') if f.tanggal_expired else '' }}">
+            </div>
+            <button type="submit" style="background:#f59e0b;color:#fff;font-weight:700;padding:7px;border-radius:8px;border:none;cursor:pointer;font-size:12px;width:100%">
+              💾 Simpan Expired
+            </button>
+          </form>
+
           {% else %}
           <span style="font-size:12px;color:#94a3b8">—</span>
           {% endif %}
