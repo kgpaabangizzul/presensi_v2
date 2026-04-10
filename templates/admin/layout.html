@@ -47,14 +47,11 @@
       <a href="/admin/dosir" class="sidebar-link {% if '/admin/dosir' in request.path %}active{% endif %}">
         <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>E-Dosir
       </a>
-      <p style="color:#475569;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:10px 10px 4px">Persuratan</p>
-      <a href="/admin/surat" class="sidebar-link {% if '/admin/surat' in request.path and '/template' not in request.path and '/nota' not in request.path and '/pejabat' not in request.path %}active{% endif %}">
-        <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Surat Perintah
+      <p style="color:#475569;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:10px 10px 4px">E-Arsip</p>
+      <a href="/admin/arsip" class="sidebar-link {% if '/admin/nota-dinas' in request.path %}active{% endif %}">
+        <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>Arsip
       </a>
-      <a href="/admin/nota-dinas" class="sidebar-link {% if '/admin/nota-dinas' in request.path %}active{% endif %}">
-        <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>Nota Dinas
-      </a>
-      <a href="/admin/pejabat-ttd" class="sidebar-link {% if '/pejabat-ttd' in request.path %}active{% endif %}">
+      <!-- <a href="/admin/pejabat-ttd" class="sidebar-link {% if '/pejabat-ttd' in request.path %}active{% endif %}">
         <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>Pejabat TTD
       </a>
       <a href="/admin/approval-config" class="sidebar-link {% if '/approval-config' in request.path %}active{% endif %}">
@@ -62,7 +59,7 @@
       </a>
       <a href="/admin/nota-template" class="sidebar-link {% if '/nota-template' in request.path %}active{% endif %}">
         <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 8a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zm12 0a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>Template Nota
-      </a>
+      </a> -->
       <p style="color:#475569;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:10px 10px 4px">Master Data</p>
       <a href="/admin/departemen" class="sidebar-link {% if '/admin/departemen' in request.path %}active{% endif %}">
         <svg style="width:15px;height:15px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>Departemen

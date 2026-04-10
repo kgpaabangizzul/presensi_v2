@@ -1,0 +1,133 @@
+{% extends "layout.html" %}
+{% block title %}Upload Arsip · SIAP RSSR{% endblock %}
+{% block content %}
+<style>
+.form-card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.08);padding:20px;margin-bottom:16px}
+.field-label{display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px}
+.field-req{color:#ef4444}
+.input-f{width:100%;padding:10px 13px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff}
+.input-f:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.drop-zone{border:2px dashed #bfdbfe;border-radius:12px;padding:28px;text-align:center;background:#f0f9ff;cursor:pointer;transition:.2s}
+.drop-zone.dragover{border-color:#2563eb;background:#dbeafe}
+.btn-submit{width:100%;padding:13px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-weight:800;font-size:15px;border:none;border-radius:12px;cursor:pointer}
+.btn-submit:active{transform:scale(.99)}
+</style>
+
+<!-- Header -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/arsip" style="width:36px;height:36px;background:#f1f5f9;border-radius:10px;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:18px">←</a>
+  <div>
+    <h2 style="font-size:18px;font-weight:800;color:#1e293b;margin:0">📤 Upload Arsip</h2>
+    <p style="font-size:12px;color:#64748b;margin:0">Upload dokumen ke arsip instansi</p>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div style="padding:11px 14px;border-radius:12px;margin-bottom:14px;font-size:13px;
+    background:{{'#d1fae5' if cat=='success' else '#fee2e2' if cat=='error' else '#fef3c7'}};
+    color:{{'#065f46' if cat=='success' else '#991b1b' if cat=='error' else '#92400e'}}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<form method="POST" enctype="multipart/form-data" action="/arsip/upload">
+  <div class="form-card">
+    <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 16px">Informasi Dokumen</h3>
+
+    <!-- Judul -->
+    <div style="margin-bottom:14px">
+      <label class="field-label">Judul Dokumen <span class="field-req">*</span></label>
+      <input type="text" name="judul" class="input-f" required placeholder="Masukkan judul dokumen..." maxlength="255">
+    </div>
+
+    <!-- Jenis + Nomor -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div>
+        <label class="field-label">Jenis Surat <span class="field-req">*</span></label>
+        <select name="jenis" class="input-f" required>
+          <option value="">-- Pilih Jenis --</option>
+          {% for j in jenis_list %}
+          <option value="{{ j }}">{{ j }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Nomor Surat</label>
+        <input type="text" name="nomor" class="input-f" placeholder="Opsional">
+      </div>
+    </div>
+
+    <!-- Kategori (Pokja) + Tanggal -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div>
+        <label class="field-label">Kategori / Pokja <span style="color:#94a3b8;font-weight:400">(opsional)</span></label>
+        <select name="kategori" class="input-f">
+          <option value="">-- Pilih Pokja --</option>
+          {% for k in kategori_list %}
+          <option value="{{ k }}">{{ k }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Tanggal Surat <span class="field-req">*</span></label>
+        <input type="date" name="tanggal" class="input-f" required value="{{ today.strftime('%Y-%m-%d') }}">
+      </div>
+    </div>
+
+    <!-- Keterangan -->
+    <div style="margin-bottom:14px">
+      <label class="field-label">Keterangan</label>
+      <textarea name="keterangan" class="input-f" rows="3" placeholder="Deskripsi singkat isi dokumen (opsional)" style="resize:vertical"></textarea>
+    </div>
+  </div>
+
+  <!-- Upload File -->
+  <div class="form-card">
+    <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px">📎 File Dokumen <span class="field-req">*</span></h3>
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div id="dropInfo">
+        <p style="font-size:28px;margin:0">📄</p>
+        <p style="font-size:13px;font-weight:700;color:#1d4ed8;margin:6px 0 2px">Klik atau seret file ke sini</p>
+        <p style="font-size:11px;color:#64748b">PDF, JPG, PNG · Maks. 5 MB</p>
+      </div>
+      <div id="filePreview" style="display:none">
+        <p style="font-size:24px;margin:0" id="fileIcon">📄</p>
+        <p style="font-size:13px;font-weight:700;color:#1e293b;margin:6px 0 2px" id="fileName">-</p>
+        <p style="font-size:11px;color:#10b981" id="fileSize">-</p>
+        <button type="button" onclick="clearFile(event)" style="margin-top:6px;background:#fee2e2;color:#991b1b;border:none;border-radius:8px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer">✕ Hapus</button>
+      </div>
+    </div>
+    <input type="file" id="fileInput" name="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="showFile(this)">
+  </div>
+
+  <button type="submit" class="btn-submit">📤 Upload Arsip</button>
+</form>
+
+<script>
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  const dt = new DataTransfer();
+  dt.items.add(e.dataTransfer.files[0]);
+  document.getElementById('fileInput').files = dt.files;
+  showFile(document.getElementById('fileInput'));
+});
+function showFile(input) {
+  if (!input.files.length) return;
+  const f = input.files[0];
+  document.getElementById('dropInfo').style.display = 'none';
+  document.getElementById('filePreview').style.display = 'block';
+  document.getElementById('fileIcon').textContent = f.name.endsWith('.pdf') ? '📄' : '🖼️';
+  document.getElementById('fileName').textContent = f.name;
+  document.getElementById('fileSize').textContent = (f.size / 1024 / 1024).toFixed(2) + ' MB';
+}
+function clearFile(e) {
+  e.stopPropagation();
+  document.getElementById('fileInput').value = '';
+  document.getElementById('dropInfo').style.display = 'block';
+  document.getElementById('filePreview').style.display = 'none';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,202 @@
+{% extends "admin/layout.html" %}
+{% block title %}Bagikan Surat · SIAP RSSR{% endblock %}
+{% block content %}
+<style>
+.user-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;transition:.15s;margin-bottom:8px}
+.user-row:hover{border-color:#3b82f6;background:#f0f9ff}
+.user-row.selected{border-color:#10b981;background:#f0fdf4}
+.user-row.sudah{border-color:#fbbf24;background:#fffbeb}
+.avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#3b82f6);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;flex-shrink:0}
+.dept-header{font-size:11px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px;padding:0 2px}
+.input-search{width:100%;padding:9px 13px 9px 36px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;box-sizing:border-box}
+.input-search:focus{outline:none;border-color:#3b82f6}
+.badge-wa{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;background:#dcfce7;color:#166534}
+.badge-nowa{font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;background:#fee2e2;color:#991b1b}
+.badge-sudah{font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;background:#fef3c7;color:#92400e}
+.sticky-bottom{position:sticky;bottom:0;background:#fff;padding:14px 0 0;border-top:1px solid #f1f5f9;margin-top:16px}
+</style>
+
+<!-- Header -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/admin/arsip" style="width:36px;height:36px;background:#f1f5f9;border-radius:10px;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:18px">←</a>
+  <div>
+    <h2 style="font-size:18px;font-weight:800;color:#1e293b;margin:0">📨 Bagikan Surat</h2>
+    <p style="font-size:12px;color:#64748b;margin:0">Pilih penerima dan kirim notifikasi WhatsApp</p>
+  </div>
+</div>
+
+<!-- Info surat -->
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);border-radius:14px;padding:16px;margin-bottom:20px;color:#fff">
+  <p style="font-size:10px;color:#93c5fd;font-weight:700;text-transform:uppercase;margin:0 0 4px">{{ arsip.jenis }}</p>
+  <p style="font-size:16px;font-weight:800;margin:0 0 6px">{{ arsip.judul }}</p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    {% if arsip.nomor %}<span style="font-size:11px;color:#bfdbfe">📋 {{ arsip.nomor }}</span>{% endif %}
+    <span style="font-size:11px;color:#bfdbfe">📅 {{ arsip.tanggal.strftime('%d %b %Y') if arsip.tanggal else '-' }}</span>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div style="padding:11px 14px;border-radius:12px;margin-bottom:14px;font-size:13px;
+    background:{{'#d1fae5' if cat=='success' else '#fee2e2' if cat=='error' else '#fef3c7'}};
+    color:{{'#065f46' if cat=='success' else '#991b1b' if cat=='error' else '#92400e'}}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Toolbar pilih -->
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+  <div style="flex:1;min-width:180px;position:relative">
+    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%)">🔍</span>
+    <input type="text" id="userSearch" class="input-search" placeholder="Cari nama atau departemen..." oninput="filterUsers()">
+  </div>
+  <button type="button" onclick="selectAll(true)"
+    style="background:#3b82f6;color:#fff;font-weight:700;padding:8px 14px;border-radius:9px;border:none;cursor:pointer;font-size:12px">☑ Pilih Semua</button>
+  <button type="button" onclick="selectAll(false)"
+    style="background:#f1f5f9;color:#374151;font-weight:600;padding:8px 14px;border-radius:9px;border:none;cursor:pointer;font-size:12px">✕ Batal Semua</button>
+</div>
+
+<form method="POST" id="bagikanForm">
+  <!-- Daftar user per departemen -->
+  {% set ns = namespace(dept='') %}
+  <div id="userList">
+  {% for u in semua_user %}
+    {% if u.departemen != ns.dept %}
+      {% set ns.dept = u.departemen %}
+      <div class="dept-header" data-dept="{{ u.departemen or '' }}">🏢 {{ u.departemen or 'Tanpa Departemen' }}</div>
+    {% endif %}
+    <label class="user-row {{ 'sudah' if u.id in sudah_bagikan else '' }}" id="row-{{ u.id }}" data-nama="{{ u.nama|lower }}" data-dept="{{ (u.departemen or '')|lower }}">
+      <input type="checkbox" name="user_ids" value="{{ u.id }}"
+        {% if u.id in sudah_bagikan %}checked{% endif %}
+        style="display:none" onchange="updateRow(this)">
+      <div class="avatar">{{ u.nama[0]|upper }}</div>
+      <div style="flex:1;min-width:0">
+        <p style="font-weight:700;color:#1e293b;font-size:13px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ u.nama }}</p>
+        <p style="font-size:11px;color:#64748b;margin:1px 0">{{ u.jabatan or '-' }} · {{ u.departemen or '-' }}</p>
+        <p style="font-size:10px;color:#94a3b8;margin:0">{{ u.nik or '-' }}</p>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        {% if u.no_hp %}
+        <span class="badge-wa">📱 WA</span>
+        {% else %}
+        <span class="badge-nowa">❌ No WA</span>
+        {% endif %}
+        {% if u.id in sudah_bagikan %}
+        <span class="badge-sudah">✓ Dikirim</span>
+        {% endif %}
+      </div>
+    </label>
+  {% endfor %}
+  </div>
+
+  <!-- Counter + tombol kirim -->
+  <div class="sticky-bottom">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <p style="font-size:13px;font-weight:600;color:#374151;margin:0">
+        Terpilih: <span id="counter" style="color:#2563eb;font-weight:800">0</span> penerima
+        <span id="waCounter" style="font-size:11px;color:#10b981;margin-left:6px"></span>
+      </p>
+      <div style="display:flex;gap:8px">
+        <a href="/admin/arsip" style="background:#f1f5f9;color:#374151;font-weight:600;padding:11px 16px;border-radius:10px;text-decoration:none;font-size:13px">Lewati</a>
+        <button type="button" onclick="confirmSend()"
+          style="background:#10b981;color:#fff;font-weight:800;padding:11px 20px;border-radius:10px;border:none;cursor:pointer;font-size:13px">
+          📨 Kirim & Bagikan
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<!-- Confirm modal -->
+<div id="confirmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:flex-end;justify-content:center" onclick="closeModal()">
+  <div onclick="event.stopPropagation()" style="background:#fff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto">
+    <h3 style="font-size:16px;font-weight:800;color:#1e293b;margin:0 0 6px">📨 Konfirmasi Kirim</h3>
+    <p style="font-size:13px;color:#64748b;margin:0 0 16px" id="confirmText">-</p>
+    <div style="background:#fef3c7;border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;color:#92400e">
+      ⚠️ Notifikasi WhatsApp akan dikirim ke penerima yang memiliki nomor HP terdaftar.
+    </div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeModal()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer;font-size:13px">Batal</button>
+      <button onclick="document.getElementById('bagikanForm').submit()"
+        style="flex:2;background:#10b981;color:#fff;font-weight:800;padding:11px;border-radius:10px;border:none;cursor:pointer;font-size:13px">✓ Ya, Kirim Sekarang</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Init counter on load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('input[name="user_ids"]').forEach(cb => {
+    if (cb.checked) updateRow(cb);
+  });
+  updateCounter();
+});
+
+function updateRow(cb) {
+  const row = cb.closest('.user-row');
+  if (cb.checked) {
+    row.classList.add('selected');
+    row.classList.remove('sudah');
+  } else {
+    row.classList.remove('selected');
+  }
+  updateCounter();
+}
+
+function updateCounter() {
+  const checked = document.querySelectorAll('input[name="user_ids"]:checked');
+  document.getElementById('counter').textContent = checked.length;
+  // Count how many have WA badge
+  let waCount = 0;
+  checked.forEach(cb => {
+    const row = cb.closest('.user-row');
+    if (row.querySelector('.badge-wa')) waCount++;
+  });
+  const waSuffix = waCount > 0 ? `· ${waCount} akan dapat WA` : '';
+  document.getElementById('waCounter').textContent = waSuffix;
+}
+
+function selectAll(val) {
+  document.querySelectorAll('#userList input[name="user_ids"]').forEach(cb => {
+    // only affect visible rows
+    const row = cb.closest('.user-row');
+    if (row.style.display !== 'none') {
+      cb.checked = val;
+      updateRow(cb);
+    }
+  });
+}
+
+function filterUsers() {
+  const q = document.getElementById('userSearch').value.toLowerCase();
+  // Show/hide user rows
+  document.querySelectorAll('#userList .user-row').forEach(row => {
+    const match = row.dataset.nama.includes(q) || row.dataset.dept.includes(q);
+    row.style.display = match ? 'flex' : 'none';
+  });
+  // Show dept header only if at least one user row underneath is visible
+  document.querySelectorAll('#userList .dept-header').forEach(hdr => {
+    let el = hdr.nextElementSibling;
+    let hasVisible = false;
+    while (el && !el.classList.contains('dept-header')) {
+      if (el.classList.contains('user-row') && el.style.display !== 'none') {
+        hasVisible = true;
+        break;
+      }
+      el = el.nextElementSibling;
+    }
+    hdr.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function confirmSend() {
+  const n = document.querySelectorAll('input[name="user_ids"]:checked').length;
+  if (n === 0) { alert('Pilih minimal satu penerima.'); return; }
+  document.getElementById('confirmText').textContent =
+    `Surat akan dibagikan ke ${n} penerima dan notifikasi WhatsApp akan dikirim ke yang memiliki nomor HP.`;
+  document.getElementById('confirmModal').style.display = 'flex';
+}
+function closeModal() {
+  document.getElementById('confirmModal').style.display = 'none';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,140 @@
+{% extends "layout.html" %}
+{% block title %}Arsip Surat · SIAP RSSR{% endblock %}
+{% block content %}
+<style>
+.arsip-card{background:#fff;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.07);margin-bottom:12px;overflow:hidden;border:1.5px solid #f1f5f9;transition:.15s}
+.arsip-card:active{transform:scale(.99)}
+.badge-jenis{padding:3px 10px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap}
+.badge-kat{padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:#ede9fe;color:#5b21b6;white-space:nowrap}
+.badge-user{padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:#e0f2fe;color:#0369a1}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid #e2e8f0;background:#fff;color:#64748b;white-space:nowrap;text-decoration:none}
+.chip.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
+.chip-kat.active{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.search-box{width:100%;padding:10px 14px 10px 38px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:13px;color:#1e293b;background:#fff;box-sizing:border-box}
+.search-box:focus{outline:none;border-color:#3b82f6}
+.btn-upload{display:inline-flex;align-items:center;gap:6px;background:#10b981;color:#fff;font-weight:700;padding:10px 16px;border-radius:10px;text-decoration:none;font-size:13px}
+</style>
+
+{% set jenis_colors = {
+  'Surat Keputusan':'#dbeafe:#1d4ed8',
+  'Surat Edaran':'#dcfce7:#166534',
+  'Surat Perintah':'#fef3c7:#92400e',
+  'Surat Tugas':'#ede9fe:#5b21b6',
+  'Nota Dinas':'#e0f2fe:#0369a1',
+  'Berita Acara':'#fee2e2:#991b1b',
+  'Surat Undangan':'#fce7f3:#9d174d',
+  'Surat Keterangan':'#f0fdf4:#166534',
+  'Surat Permohonan':'#fff7ed:#9a3412',
+  'Surat Perjanjian':'#f5f3ff:#4c1d95',
+  'Memo':'#f8fafc:#334155',
+  'SOP':'#ecfdf5:#065f46',
+  'Surat Telegram':'#fefce8:#713f12',
+  'Lainnya':'#f1f5f9:#475569'
+} %}
+
+<!-- Header -->
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:20px;color:#fff;margin:-16px -16px 0">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:40px;height:40px;background:rgba(255,255,255,.15);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px">🗂️</div>
+      <div>
+        <h2 style="font-size:18px;font-weight:800;margin:0">Arsip Surat</h2>
+        <p style="font-size:12px;color:#93c5fd;margin:0">Dokumen & Surat Resmi Instansi</p>
+      </div>
+    </div>
+    <a href="/arsip/upload" class="btn-upload">➕ Upload</a>
+  </div>
+  <div style="position:relative">
+    <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px">🔍</span>
+    <form method="GET" id="searchForm">
+      <input type="hidden" name="jenis" value="{{ jenis_filter }}">
+      <input type="hidden" name="kategori" value="{{ kategori_filter }}">
+      <input type="text" name="q" value="{{ q }}" placeholder="Cari judul, nomor, atau keterangan..."
+        class="search-box" oninput="debounceSearch()" id="searchInput">
+    </form>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div style="margin:12px 0;padding:11px 14px;border-radius:12px;font-size:13px;
+    background:{{'#d1fae5' if cat=='success' else '#fee2e2' if cat=='error' else '#fef3c7'}};
+    color:{{'#065f46' if cat=='success' else '#991b1b' if cat=='error' else '#92400e'}}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Filter Jenis -->
+<div style="margin:14px 0 6px;display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">
+  <a href="?q={{ q }}&kategori={{ kategori_filter }}" class="chip {{ 'active' if not jenis_filter }}">Semua Jenis</a>
+  {% for j in jenis_list %}
+  <a href="?jenis={{ j|urlencode }}&q={{ q }}&kategori={{ kategori_filter }}" class="chip {{ 'active' if jenis_filter==j }}">{{ j }}</a>
+  {% endfor %}
+</div>
+
+<!-- Filter Kategori (Pokja) -->
+<div style="margin:0 0 14px;display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">
+  <a href="?q={{ q }}&jenis={{ jenis_filter }}" class="chip chip-kat {{ 'active' if not kategori_filter }}" style="border-color:#7c3aed;color:#7c3aed">Semua Pokja</a>
+  {% for k in kategori_list %}
+  <a href="?kategori={{ k|urlencode }}&q={{ q }}&jenis={{ jenis_filter }}" class="chip chip-kat {{ 'active' if kategori_filter==k }}" style="{% if not kategori_filter==k %}border-color:#ddd8fe;color:#7c3aed{% endif %}">{{ k }}</a>
+  {% endfor %}
+</div>
+
+<!-- List -->
+{% if not arsip_list %}
+<div style="text-align:center;padding:48px 20px;color:#94a3b8">
+  <p style="font-size:40px">📭</p>
+  <p style="font-size:14px;font-weight:600;margin-top:8px">Belum ada arsip ditemukan</p>
+  <p style="font-size:12px;margin-top:4px">Coba ubah filter atau kata kunci pencarian</p>
+</div>
+{% else %}
+<p style="font-size:12px;color:#94a3b8;margin-bottom:10px">{{ arsip_list|length }} dokumen ditemukan</p>
+{% for a in arsip_list %}
+{% set colors = jenis_colors.get(a.jenis, '#f1f5f9:#475569').split(':') %}
+<div class="arsip-card">
+  <div style="padding:14px 16px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div style="flex:1;min-width:0">
+        <!-- Jenis badge + nomor -->
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px">
+          <span class="badge-jenis" style="background:{{ colors[0] }};color:{{ colors[1] }}">{{ a.jenis }}</span>
+          {% if a.kategori %}<span class="badge-kat">{{ a.kategori }}</span>{% endif %}
+          {% if a.sumber == 'user' %}<span class="badge-user">📤 Upload User</span>{% endif %}
+          {% if a.nomor %}<span style="font-size:11px;color:#94a3b8;font-weight:600">{{ a.nomor }}</span>{% endif %}
+        </div>
+        <!-- Judul -->
+        <p style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 4px;line-height:1.3">{{ a.judul }}</p>
+        <!-- Meta -->
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#64748b">📅 {{ a.tanggal.strftime('%d %b %Y') if a.tanggal else '-' }}</span>
+          <span style="font-size:11px;color:#94a3b8">oleh {{ a.pembuat_nama }}</span>
+        </div>
+        {% if a.keterangan %}
+        <p style="font-size:12px;color:#64748b;margin-top:5px;line-height:1.4">{{ a.keterangan[:120] }}{% if a.keterangan|length > 120 %}...{% endif %}</p>
+        {% endif %}
+      </div>
+      <!-- Icon file -->
+      <div style="flex-shrink:0">
+        {% if a.filename %}
+        <a href="/arsip/file/{{ a.id }}" target="_blank"
+          style="display:flex;flex-direction:column;align-items:center;gap:3px;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:8px 10px;text-decoration:none">
+          <span style="font-size:20px">{{ '📄' if a.filename.endswith('.pdf') else '🖼️' }}</span>
+          <span style="font-size:10px;font-weight:700;color:#0369a1">Lihat</span>
+        </a>
+        {% else %}
+        <div style="width:42px;height:42px;background:#f8fafc;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px">📋</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<script>
+let _timer;
+function debounceSearch() {
+  clearTimeout(_timer);
+  _timer = setTimeout(() => document.getElementById('searchForm').submit(), 500);
+}
+</script>
+{% endblock %}

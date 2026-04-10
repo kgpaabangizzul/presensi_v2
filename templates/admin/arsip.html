@@ -1,0 +1,284 @@
+{% extends "admin/layout.html" %}
+{% block title %}Kelola Arsip · SIAP RSSR{% endblock %}
+{% block content %}
+<style>
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px;margin-bottom:16px}
+.input-field{width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box;background:#fff}
+.input-field:focus{outline:none;border-color:#3b82f6}
+.btn-primary{background:#3b82f6;color:#fff;font-weight:700;padding:10px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px}
+.btn-edit{background:#fef3c7;color:#92400e;font-weight:600;padding:7px 12px;border-radius:8px;border:none;cursor:pointer;font-size:12px}
+.btn-del{background:#fee2e2;color:#991b1b;font-weight:600;padding:7px 12px;border-radius:8px;border:none;cursor:pointer;font-size:12px}
+.btn-share{background:#d1fae5;color:#065f46;font-weight:700;padding:7px 12px;border-radius:8px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;font-size:12px}
+.badge-jenis{padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;align-items:flex-end;justify-content:center}
+.modal-box{background:#fff;border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:100%;max-height:94vh;overflow-y:auto}
+@media(min-width:640px){
+  .modal-overlay{align-items:center}
+  .modal-box{border-radius:20px;max-width:520px;max-height:90vh}
+}
+</style>
+
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+  <div>
+    <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0">🗂️ Kelola Arsip Surat</h2>
+    <p style="font-size:12px;color:#64748b;margin-top:2px">Tambah dan kelola dokumen arsip instansi</p>
+  </div>
+  <button onclick="openAdd()" class="btn-primary">+ Tambah Arsip</button>
+</div>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+  <div style="padding:11px 14px;border-radius:12px;margin-bottom:12px;font-size:13px;
+    background:{{'#d1fae5' if cat=='success' else '#fee2e2' if cat=='error' else '#fef3c7'}};
+    color:{{'#065f46' if cat=='success' else '#991b1b' if cat=='error' else '#92400e'}}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Stats -->
+<div style="display:flex;gap:10px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px">
+  <div style="background:linear-gradient(135deg,#3b82f6,#2563eb);border-radius:14px;padding:14px 18px;min-width:120px;flex-shrink:0">
+    <p style="font-size:24px;font-weight:800;color:#fff;margin:0">{{ arsip_list|length }}</p>
+    <p style="font-size:11px;color:#bfdbfe;margin-top:2px">Total Arsip</p>
+  </div>
+  {% for s in stats[:5] %}
+  <div style="background:#fff;border-radius:14px;padding:14px 18px;min-width:120px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+    <p style="font-size:22px;font-weight:800;color:#1e293b;margin:0">{{ s.total }}</p>
+    <p style="font-size:10px;color:#64748b;margin-top:2px">{{ s.jenis }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Filter & Search -->
+<div class="card" style="padding:14px">
+  <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div style="flex:2;min-width:180px">
+      <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">Cari</label>
+      <input type="text" name="q" value="{{ q }}" placeholder="Judul, nomor, keterangan..." class="input-field">
+    </div>
+    <div style="flex:1;min-width:140px">
+      <label style="font-size:11px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">Jenis</label>
+      <select name="jenis" class="input-field">
+        <option value="">— Semua —</option>
+        {% for j in jenis_list %}
+        <option value="{{ j }}" {{ 'selected' if jenis_filter==j }}>{{ j }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-primary" style="padding:9px 16px">Filter</button>
+    <a href="/admin/arsip" style="background:#f1f5f9;color:#374151;font-weight:600;padding:9px 14px;border-radius:10px;text-decoration:none;font-size:13px">Reset</a>
+  </form>
+</div>
+
+<!-- List -->
+{% if not arsip_list %}
+<div style="text-align:center;padding:48px;color:#94a3b8;background:#fff;border-radius:16px">
+  <p style="font-size:36px">📭</p>
+  <p style="font-size:14px;font-weight:600;margin-top:8px">Belum ada arsip</p>
+  <p style="font-size:12px;margin-top:4px">Klik "+ Tambah Arsip" untuk mulai menambahkan</p>
+</div>
+{% else %}
+
+<!-- Mobile cards -->
+<div class="sm:hidden">
+{% for a in arsip_list %}
+<div style="background:#fff;border-radius:14px;margin-bottom:10px;overflow:hidden;border:1.5px solid #f1f5f9">
+  <div style="padding:14px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+      <div style="flex:1">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px">
+          <span class="badge-jenis" style="background:#dbeafe;color:#1d4ed8">{{ a.jenis }}</span>
+          {% if a.nomor %}<span style="font-size:11px;color:#94a3b8">{{ a.nomor }}</span>{% endif %}
+        </div>
+        <p style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 3px">{{ a.judul }}</p>
+        <p style="font-size:11px;color:#64748b">📅 {{ a.tanggal.strftime('%d %b %Y') if a.tanggal else '-' }} · {{ a.pembuat_nama }}</p>
+        {% if a.keterangan %}<p style="font-size:12px;color:#94a3b8;margin-top:4px">{{ a.keterangan[:80] }}{% if a.keterangan|length > 80 %}...{% endif %}</p>{% endif %}
+      </div>
+      {% if a.filename %}
+      <a href="/admin/arsip/file/{{ a.id }}" target="_blank"
+        style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:8px;text-decoration:none;font-size:18px;flex-shrink:0">
+        {{ '📄' if a.filename.endswith('.pdf') else '🖼️' }}
+      </a>
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% if a.jenis in ['Surat Perintah','Surat Tugas','Surat Telegram'] %}
+      <a href="/admin/arsip/bagikan/{{ a.id }}" class="btn-share" style="flex:1">📨 Bagikan</a>
+      {% endif %}
+      <button onclick="openEdit({{ a.id }},'{{ a.judul|e }}','{{ a.jenis|e }}','{{ a.nomor or '' }}','{{ a.tanggal }}','{{ a.keterangan|e if a.keterangan else '' }}')"
+        class="btn-edit" style="flex:1">✏️ Edit</button>
+      <form method="POST" action="/admin/arsip/hapus/{{ a.id }}" onsubmit="return confirm('Hapus arsip ini?')" style="flex:1;margin:0">
+        <button type="submit" class="btn-del" style="width:100%">🗑 Hapus</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<!-- Desktop table -->
+<div class="hidden sm:block" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.07)">
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="background:#f8fafc">
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Judul / Nomor</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Jenis</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Tanggal</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">File</th>
+        <th style="padding:12px 14px;text-align:left;font-weight:700;color:#374151;border-bottom:2px solid #e2e8f0">Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for a in arsip_list %}
+    <tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:12px 14px">
+        <p style="font-weight:700;color:#1e293b;margin:0">{{ a.judul }}</p>
+        {% if a.nomor %}<p style="font-size:11px;color:#94a3b8;margin-top:2px">{{ a.nomor }}</p>{% endif %}
+        {% if a.keterangan %}<p style="font-size:11px;color:#64748b;margin-top:2px">{{ a.keterangan[:60] }}{% if a.keterangan|length > 60 %}...{% endif %}</p>{% endif %}
+      </td>
+      <td style="padding:12px 14px">
+        <span class="badge-jenis" style="background:#dbeafe;color:#1d4ed8">{{ a.jenis }}</span>
+      </td>
+      <td style="padding:12px 14px;color:#64748b;font-size:12px">
+        {{ a.tanggal.strftime('%d %b %Y') if a.tanggal else '-' }}<br>
+        <span style="color:#94a3b8">{{ a.pembuat_nama }}</span>
+      </td>
+      <td style="padding:12px 14px">
+        {% if a.filename %}
+        <a href="/admin/arsip/file/{{ a.id }}" target="_blank"
+          style="background:#e0f2fe;color:#0369a1;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;text-decoration:none">
+          👁 {{ '📄 PDF' if a.filename.endswith('.pdf') else '🖼️ Gambar' }}
+        </a>
+        {% else %}
+        <span style="color:#cbd5e1;font-size:12px">— Tidak ada —</span>
+        {% endif %}
+      </td>
+      <td style="padding:12px 14px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          {% if a.jenis in ['Surat Perintah','Surat Tugas','Surat Telegram'] %}
+          <a href="/admin/arsip/bagikan/{{ a.id }}" class="btn-share">📨 Bagikan</a>
+          {% endif %}
+          <button onclick="openEdit({{ a.id }},'{{ a.judul|e }}','{{ a.jenis|e }}','{{ a.nomor or '' }}','{{ a.tanggal }}','{{ a.keterangan|e if a.keterangan else '' }}')"
+            class="btn-edit">✏️ Edit</button>
+          <form method="POST" action="/admin/arsip/hapus/{{ a.id }}" onsubmit="return confirm('Hapus arsip ini?')" style="margin:0">
+            <button type="submit" class="btn-del">🗑</button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Modal Tambah -->
+<div id="modalAdd" class="modal-overlay" onclick="if(event.target===this)closeAdd()">
+  <div class="modal-box">
+    <div class="sm:hidden" style="width:40px;height:4px;background:#e2e8f0;border-radius:99px;margin:0 auto 16px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">+ Tambah Arsip Surat</h3>
+      <button onclick="closeAdd()" style="background:#f1f5f9;border:none;border-radius:99px;width:30px;height:30px;cursor:pointer">✕</button>
+    </div>
+    <form method="POST" action="/admin/arsip/tambah" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Judul Dokumen *</label>
+        <input type="text" name="judul" class="input-field" required placeholder="contoh: SK Pengangkatan Jabatan...">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Jenis *</label>
+          <select name="jenis" class="input-field" required>
+            <option value="">— Pilih Jenis —</option>
+            {% for j in jenis_list %}
+            <option value="{{ j }}">{{ j }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Tanggal</label>
+          <input type="date" name="tanggal" class="input-field" value="{{ today }}">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Nomor Surat <span style="color:#94a3b8;font-weight:400">(opsional)</span></label>
+        <input type="text" name="nomor" class="input-field" placeholder="contoh: 001/SK/2025">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Keterangan <span style="color:#94a3b8;font-weight:400">(opsional)</span></label>
+        <textarea name="keterangan" class="input-field" rows="2" placeholder="Ringkasan isi dokumen..." style="resize:vertical"></textarea>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Upload File <span style="color:#94a3b8;font-weight:400">(PDF/JPG/PNG, maks 5MB, opsional)</span></label>
+        <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" class="input-field" style="padding:8px">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button type="button" onclick="closeAdd()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer">Batal</button>
+        <button type="submit" class="btn-primary" style="flex:2;padding:11px">✓ Simpan Arsip</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Edit -->
+<div id="modalEdit" class="modal-overlay" onclick="if(event.target===this)closeEdit()">
+  <div class="modal-box">
+    <div class="sm:hidden" style="width:40px;height:4px;background:#e2e8f0;border-radius:99px;margin:0 auto 16px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="font-size:16px;font-weight:700;color:#1e293b;margin:0">✏️ Edit Arsip</h3>
+      <button onclick="closeEdit()" style="background:#f1f5f9;border:none;border-radius:99px;width:30px;height:30px;cursor:pointer">✕</button>
+    </div>
+    <form id="editForm" method="POST" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Judul Dokumen *</label>
+        <input type="text" name="judul" id="eJudul" class="input-field" required>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Jenis *</label>
+          <select name="jenis" id="eJenis" class="input-field" required>
+            {% for j in jenis_list %}
+            <option value="{{ j }}">{{ j }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Tanggal</label>
+          <input type="date" name="tanggal" id="eTanggal" class="input-field">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Nomor Surat <span style="color:#94a3b8;font-weight:400">(opsional)</span></label>
+        <input type="text" name="nomor" id="eNomor" class="input-field">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Keterangan</label>
+        <textarea name="keterangan" id="eKet" class="input-field" rows="2" style="resize:vertical"></textarea>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Ganti File <span style="color:#94a3b8;font-weight:400">(kosongkan jika tidak diganti)</span></label>
+        <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" class="input-field" style="padding:8px">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button type="button" onclick="closeEdit()" style="flex:1;background:#f1f5f9;color:#374151;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer">Batal</button>
+        <button type="submit" class="btn-primary" style="flex:2;padding:11px">✓ Simpan Perubahan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openAdd(){ document.getElementById('modalAdd').style.display='flex'; document.body.style.overflow='hidden'; }
+function closeAdd(){ document.getElementById('modalAdd').style.display='none'; document.body.style.overflow=''; }
+function openEdit(id, judul, jenis, nomor, tanggal, ket){
+  document.getElementById('editForm').action = '/admin/arsip/edit/' + id;
+  document.getElementById('eJudul').value = judul;
+  document.getElementById('eJenis').value = jenis;
+  document.getElementById('eTanggal').value = tanggal;
+  document.getElementById('eNomor').value = nomor;
+  document.getElementById('eKet').value = ket;
+  document.getElementById('modalEdit').style.display='flex';
+  document.body.style.overflow='hidden';
+}
+function closeEdit(){ document.getElementById('modalEdit').style.display='none'; document.body.style.overflow=''; }
+</script>
+{% endblock %}
