@@ -879,6 +879,29 @@ def dashboard():
     cur.execute("SELECT * FROM absensi WHERE user_id=%s AND tanggal=%s", (uid, today))
     absen_today = cur.fetchone()
 
+    # ── Shift malam lintas hari: jika hari ini belum ada record masuk,
+    #    cek apakah kemarin sudah absen masuk tapi belum absen keluar.
+    #    Contoh: masuk 20:00 tgl 8 Apr, keluar 08:00 tgl 9 Apr.
+    if not absen_today:
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        cur.execute("""SELECT * FROM absensi
+            WHERE user_id=%s AND tanggal=%s AND jam_masuk IS NOT NULL AND jam_keluar IS NULL""",
+            (uid, yesterday))
+        absen_kemarin_terbuka = cur.fetchone()
+        if absen_kemarin_terbuka:
+            _pakai = False
+            if absen_kemarin_terbuka['shift_id']:
+                cur.execute("SELECT * FROM shift WHERE id=%s", (absen_kemarin_terbuka['shift_id'],))
+                _shift = cur.fetchone()
+                if _shift and _shift['jam_keluar'] < _shift['jam_masuk']:
+                    _pakai = True  # shift malam lintas hari
+            else:
+                _jm = (absen_kemarin_terbuka['jam_masuk'] or '00:00')[:5]
+                if _jm >= '18:00':
+                    _pakai = True  # heuristik: jam masuk malam
+            if _pakai:
+                absen_today = absen_kemarin_terbuka
+
     bulan = date.today().strftime('%Y-%m')
     cur.execute("""SELECT
         SUM(CASE WHEN status='hadir' THEN 1 ELSE 0 END) as hadir,
@@ -966,6 +989,26 @@ def absen():
     cur.execute("SELECT * FROM absensi WHERE user_id=%s AND tanggal=%s", (uid, today))
     absen_today = cur.fetchone()
 
+    # ── Shift malam lintas hari: cek record kemarin yang belum keluar
+    if not absen_today:
+        _yest = (date.today() - timedelta(days=1)).isoformat()
+        cur.execute("""SELECT * FROM absensi
+            WHERE user_id=%s AND tanggal=%s AND jam_masuk IS NOT NULL AND jam_keluar IS NULL""",
+            (uid, _yest))
+        _open = cur.fetchone()
+        if _open:
+            _use = False
+            if _open['shift_id']:
+                cur.execute('SELECT * FROM shift WHERE id=%s', (_open['shift_id'],))
+                _s = cur.fetchone()
+                if _s and _s['jam_keluar'] < _s['jam_masuk']:
+                    _use = True
+            else:
+                if (_open['jam_masuk'] or '00:00')[:5] >= '18:00':
+                    _use = True
+            if _use:
+                absen_today = _open
+
     if tipe == 'masuk':
         if absen_today:
             flash('Sudah absen masuk hari ini!', 'warning')
@@ -1006,8 +1049,10 @@ def absen():
         else:
             # LOCK shift keluar = shift masuk, abaikan pilihan user
             shift_id = absen_today['shift_id']
+            _tanggal_absen = absen_today['tanggal'] if absen_today['tanggal'] else today
+            if hasattr(_tanggal_absen, 'isoformat'): _tanggal_absen = _tanggal_absen.isoformat()
             cur.execute("""UPDATE absensi SET jam_keluar=%s,foto_keluar=%s,lat_keluar=%s,lng_keluar=%s,jarak_keluar=%s,shift_id=%s
-                WHERE user_id=%s AND tanggal=%s""", (now, foto_path, lat, lng, jarak, shift_id, uid, today))
+                WHERE user_id=%s AND tanggal=%s""", (now, foto_path, lat, lng, jarak, shift_id, uid, _tanggal_absen))
             conn.commit()
             log_audit(conn, 'ABSEN_KELUAR', 'absensi',
                 deskripsi=f'Absen keluar — {session.get("nama")} | Jarak: {jarak:.0f}m' if jarak else f'Absen keluar — {session.get("nama")}',
