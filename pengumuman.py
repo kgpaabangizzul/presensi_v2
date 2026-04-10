@@ -6,35 +6,32 @@ Daftarkan di app.py:
 Panggil init_pengumuman_table(cur) di dalam fungsi init_db() Anda.
 """
 
-from flask import Blueprint, request, jsonify, session, redirect, url_for, flash
+from flask import Blueprint, request, jsonify, session, redirect, url_for, flash, current_app
 from functools import wraps
 import psycopg2, psycopg2.extras, os, json
 from datetime import datetime
 
 pengumuman_bp = Blueprint('pengumuman', __name__)
 
-# ── DB helper (ikut config app.py) ──────────────────────────────────────────
-DB_HOST = os.environ.get('DB_HOST', 'localhost')
-DB_PORT = os.environ.get('DB_PORT', '5432')
-DB_NAME = os.environ.get('DB_NAME', 'presensi')
-DB_USER = os.environ.get('DB_USER', 'presensi')
-DB_PASS = os.environ.get('DB_PASS', 'presensi123')
-
+# ── DB helper — ikut env yang sama dengan app.py ─────────────────────────────
 def get_db():
     conn = psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
-        user=DB_USER, password=DB_PASS
+        host=os.environ.get('DB_HOST', 'localhost'),
+        port=os.environ.get('DB_PORT', '5432'),
+        dbname=os.environ.get('DB_NAME', 'presensi'),
+        user=os.environ.get('DB_USER', 'presensi'),
+        password=os.environ.get('DB_PASS', 'presensi123')
     )
     conn.autocommit = False
     return conn
 
-# ── Dekorator admin (sama dengan app.py) ────────────────────────────────────
+# ── Dekorator admin — konsisten dengan app.py ────────────────────────────────
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('user_id') or session.get('role') != 'admin':
-            flash('Akses ditolak.', 'error')
-            return redirect(url_for('login'))
+            flash('Akses ditolak!', 'error')
+            return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated
 
@@ -56,7 +53,7 @@ def init_pengumuman_table(cur):
     if cur.fetchone()[0] == 0:
         cur.execute("""
             INSERT INTO pengumuman (judul, isi, aktif)
-            VALUES ('Selamat Datang!', 'Halo! Ada pengumuman penting untuk Anda.', FALSE)
+            VALUES ('Selamat Datang!', 'Selamat datang di aplikasi Presensi Digital. Silakan hubungi admin untuk informasi lebih lanjut.', FALSE)
         """)
 
 # ── Helper ambil pengumuman aktif ────────────────────────────────────────────
@@ -75,7 +72,7 @@ def get_pengumuman_aktif(conn):
 def api_pengumuman_aktif():
     """
     Dipanggil JS di halaman dashboard user.
-    Mengembalikan pengumuman aktif jika user belum melihatnya hari ini.
+    Mengembalikan pengumuman aktif jika user sudah login.
     Client menyimpan tanggal terakhir lihat di localStorage.
     """
     if not session.get('user_id'):
@@ -86,12 +83,19 @@ def api_pengumuman_aktif():
         conn.close()
         if not row:
             return jsonify(aktif=False)
+        # Pastikan updated_at bisa di-serialize
+        updated_at = ''
+        if row.get('updated_at'):
+            try:
+                updated_at = row['updated_at'].isoformat()
+            except Exception:
+                updated_at = str(row['updated_at'])
         return jsonify(
-            aktif  = True,
-            judul  = row['judul'],
-            isi    = row['isi'],
-            id     = row['id'],
-            updated_at = row['updated_at'].isoformat() if row.get('updated_at') else ''
+            aktif      = True,
+            judul      = row['judul'],
+            isi        = row['isi'],
+            id         = row['id'],
+            updated_at = updated_at
         )
     except Exception as e:
         return jsonify(aktif=False, error=str(e))
