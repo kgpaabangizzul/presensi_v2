@@ -1,0 +1,158 @@
+{#
+  tab_pengumuman.html — Snippet Tab "Pengumuman" untuk settings.html
+  ───────────────────────────────────────────────────────────────────────────
+
+  CARA INTEGRASI KE settings.html  (3 langkah):
+
+  LANGKAH 1 — Tambahkan tombol tab baru di blok navigasi tab (sekitar baris 19):
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  <button onclick="switchTab('pengumuman')" id="tab-btn-pengumuman"       │
+  │          style="padding:8px 18px;border-radius:10px;border:none;         │
+  │          cursor:pointer;font-size:13px;font-weight:600;transition:all     │
+  │          .15s;background:transparent;color:#64748b">                      │
+  │    📢 Pengumuman                                                          │
+  │  </button>                                                                │
+  └──────────────────────────────────────────────────────────────────────────┘
+
+  LANGKAH 2 — Tambahkan array tab di fungsi switchTab() JavaScript:
+  Ganti:   ['umum','notif','keamanan']
+  Menjadi: ['umum','notif','keamanan','pengumuman']
+
+  LANGKAH 3 — Salin/paste seluruh blok <div id="tab-pengumuman"> di bawah ini
+  tepat sebelum tag <script> penutup di settings.html.
+
+  Tambahkan juga ke hash handler di bagian paling bawah JS:
+      else if (location.hash === '#pengumuman') switchTab('pengumuman');
+#}
+
+{# ══════════════════════════════════════════════
+   TAB 4 — PENGUMUMAN
+══════════════════════════════════════════════ #}
+<div id="tab-pengumuman" style="display:none">
+  <div style="max-width:640px">
+    <div class="card" style="padding:28px">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0">
+          📢 Kelola Pengumuman Popup
+        </h3>
+
+        {# Badge status aktif/nonaktif #}
+        {% if pengumuman and pengumuman.aktif %}
+          <span style="background:#dcfce7;color:#15803d;font-size:12px;font-weight:600;
+                        padding:4px 12px;border-radius:20px;border:1px solid #86efac">
+            ✅ Aktif — akan muncul ke semua user
+          </span>
+        {% else %}
+          <span style="background:#f1f5f9;color:#64748b;font-size:12px;font-weight:600;
+                        padding:4px 12px;border-radius:20px;border:1px solid #e2e8f0">
+            ⏸ Nonaktif
+          </span>
+        {% endif %}
+      </div>
+
+      <form method="POST" action="{{ url_for('pengumuman.admin_simpan_pengumuman') }}"
+            style="display:flex;flex-direction:column;gap:18px">
+
+        {# Judul #}
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">
+            Judul Pengumuman
+          </label>
+          <input type="text" name="pengumuman_judul" required maxlength="120"
+                 class="input-field"
+                 placeholder="cth: Libur Nasional, Pembaruan Sistem …"
+                 value="{{ pengumuman.judul if pengumuman else '' }}">
+        </div>
+
+        {# Isi #}
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">
+            Isi Pengumuman
+          </label>
+          <textarea name="pengumuman_isi" rows="5" required
+                    class="input-field"
+                    placeholder="Tulis isi pengumuman di sini …"
+                    style="resize:vertical;line-height:1.6">{{ pengumuman.isi if pengumuman else '' }}</textarea>
+          <p style="font-size:11px;color:#94a3b8;margin-top:4px">
+            Popup akan menampilkan teks ini persis seperti yang Anda tulis.
+          </p>
+        </div>
+
+        {# Toggle Aktif #}
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;
+                    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div>
+            <p style="font-size:13px;font-weight:600;color:#1e293b;margin:0 0 3px">Aktifkan Popup</p>
+            <p style="font-size:12px;color:#64748b;margin:0">
+              Jika diaktifkan, popup akan muncul <strong>sekali sehari</strong> setelah user login.
+            </p>
+          </div>
+          <label style="position:relative;display:inline-block;width:48px;height:26px;flex-shrink:0">
+            <input type="checkbox" name="pengumuman_aktif" value="1" id="pgm-toggle-chk"
+                   {{ 'checked' if pengumuman and pengumuman.aktif else '' }}
+                   style="opacity:0;width:0;height:0">
+            <span id="pgm-toggle-slider" onclick="pgmToggleSlider()" style="
+              position:absolute;cursor:pointer;inset:0;
+              background:{{ '#2563eb' if pengumuman and pengumuman.aktif else '#cbd5e1' }};
+              border-radius:26px;transition:background .2s;
+            ">
+              <span style="
+                position:absolute;content:'';
+                height:20px;width:20px;
+                left:{{ '24px' if pengumuman and pengumuman.aktif else '3px' }};
+                bottom:3px;
+                background:#fff;border-radius:50%;
+                transition:left .2s;
+                display:block;
+              " id="pgm-toggle-knob"></span>
+            </span>
+          </label>
+        </div>
+
+        {# Info terakhir diperbarui #}
+        {% if pengumuman and pengumuman.updated_at %}
+        <p style="font-size:11px;color:#94a3b8;margin:0">
+          Terakhir diperbarui: {{ pengumuman.updated_at.strftime('%d %b %Y, %H:%M') }}
+        </p>
+        {% endif %}
+
+        <div>
+          <button type="submit" class="btn-primary" style="padding:11px 28px">
+            💾 Simpan Pengumuman
+          </button>
+        </div>
+      </form>
+    </div>
+
+    {# Info box #}
+    <div style="margin-top:14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:16px;padding:16px">
+      <p style="font-size:13px;font-weight:600;color:#1e40af;margin:0 0 6px">ℹ️ Cara Kerja Popup</p>
+      <ul style="font-size:12px;color:#1d4ed8;margin:0;padding-left:18px;line-height:1.8">
+        <li>Popup muncul <strong>otomatis</strong> saat user membuka dashboard setelah login.</li>
+        <li>Setiap user hanya akan melihat popup <strong>satu kali per hari</strong> (disimpan di browser).</li>
+        <li>Jika Anda mengubah isi/judul, popup akan muncul kembali ke semua user pada hari itu.</li>
+        <li>Nonaktifkan toggle untuk menyembunyikan popup tanpa menghapus isinya.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+{# ── Script toggle visual slider ─────────────────────────────────────────── #}
+<script>
+function pgmToggleSlider() {
+  var chk    = document.getElementById('pgm-toggle-chk');
+  var slider = document.getElementById('pgm-toggle-slider');
+  var knob   = document.getElementById('pgm-toggle-knob');
+  chk.checked = !chk.checked;
+  if (chk.checked) {
+    slider.style.background = '#2563eb';
+    knob.style.left = '24px';
+  } else {
+    slider.style.background = '#cbd5e1';
+    knob.style.left = '3px';
+  }
+}
+// Auto-switch tab jika hash #pengumuman
+if (location.hash === '#pengumuman') switchTab('pengumuman');
+</script>

@@ -17,9 +17,11 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.units import cm
 from lupa_password import lupa_pw_bp, init_reset_table
+from pengumuman import pengumuman_bp, init_pengumuman_table
 
 app = Flask(__name__)
 app.register_blueprint(lupa_pw_bp)
+app.register_blueprint(pengumuman_bp)
 app.secret_key = 'absensi-secret-key-2024'
 
 @app.before_request
@@ -680,6 +682,8 @@ def init_db():
     _init_audit_table(cur)
     # ── OTP RESET PASSWORD TABLE ──────────────────────────────────
     _init_reset_table(cur)
+    # ── PENGUMUMAN TABLE ──────────────────────────────────────────
+    init_pengumuman_table(cur)
     # ─────────────────────────────────────────────────────────────
 
     conn.commit()
@@ -2177,8 +2181,16 @@ def admin_settings():
         flash('Settings disimpan!', 'success')
     cur.execute("SELECT * FROM settings WHERE id=1")
     settings = cur.fetchone()
+    # Ambil data pengumuman untuk tab pengumuman
+    pengumuman = None
+    try:
+        cur.execute("SELECT * FROM pengumuman ORDER BY id LIMIT 1")
+        row = cur.fetchone()
+        pengumuman = dict(row) if row else None
+    except Exception:
+        pass
     cur.close(); conn.close()
-    return render_template('admin/settings.html', settings=settings)
+    return render_template('admin/settings.html', settings=settings, pengumuman=pengumuman)
 
 @app.route('/admin/settings/ganti-password', methods=['POST'])
 @admin_required

@@ -1,0 +1,190 @@
+{#
+  popup_pengumuman.html
+  ─────────────────────────────────────────────────────────────────────────────
+  Cara pakai: tambahkan baris berikut di template layout user SEBELUM </body>
+
+      {% include 'popup_pengumuman.html' %}
+
+  Popup akan muncul otomatis setelah login, HANYA SEKALI per hari per browser.
+  Logika: localStorage menyimpan key "pgm_seen_<id>_<tanggal>" agar tidak
+  muncul lagi di hari yang sama meskipun user refresh / buka tab baru.
+#}
+
+<!-- ══ POPUP PENGUMUMAN ══════════════════════════════════════════════════ -->
+<div id="pgm-overlay" style="
+  display:none;
+  position:fixed;inset:0;
+  background:rgba(15,23,42,.55);
+  backdrop-filter:blur(4px);
+  z-index:9999;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+">
+  <div id="pgm-box" style="
+    background:#fff;
+    border-radius:20px;
+    box-shadow:0 25px 60px rgba(0,0,0,.25);
+    max-width:500px;width:100%;
+    overflow:hidden;
+    animation:pgmSlideIn .3s cubic-bezier(.34,1.56,.64,1) both;
+  ">
+    <!-- Header -->
+    <div id="pgm-header" style="
+      background:linear-gradient(135deg,#2563eb,#1d4ed8);
+      padding:20px 24px 16px;
+      display:flex;align-items:flex-start;gap:12px;
+    ">
+      <div style="
+        width:40px;height:40px;min-width:40px;
+        background:rgba(255,255,255,.2);
+        border-radius:12px;
+        display:flex;align-items:center;justify-content:center;
+        font-size:22px;
+      ">📢</div>
+      <div style="flex:1">
+        <p style="font-size:11px;font-weight:600;color:rgba(255,255,255,.7);
+                  letter-spacing:.8px;text-transform:uppercase;margin:0 0 4px">
+          Pengumuman
+        </p>
+        <h3 id="pgm-judul" style="font-size:17px;font-weight:700;color:#fff;margin:0;line-height:1.3">
+          Memuat…
+        </h3>
+      </div>
+      <button onclick="pgmTutup()" style="
+        background:rgba(255,255,255,.15);border:none;
+        width:32px;height:32px;border-radius:8px;
+        color:#fff;font-size:18px;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;
+        flex-shrink:0;line-height:1;
+      ">×</button>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:22px 24px 8px">
+      <div id="pgm-isi" style="
+        font-size:14px;color:#374151;line-height:1.7;
+        max-height:260px;overflow-y:auto;
+        white-space:pre-wrap;word-break:break-word;
+      ">Memuat…</div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:16px 24px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:#64748b">
+        <input type="checkbox" id="pgm-jangan-lagi"
+               style="width:15px;height:15px;accent-color:#2563eb;cursor:pointer">
+        Jangan tampilkan lagi hari ini
+      </label>
+      <button onclick="pgmTutup(true)" style="
+        background:linear-gradient(135deg,#2563eb,#1d4ed8);
+        color:#fff;border:none;
+        padding:9px 22px;border-radius:10px;
+        font-size:13px;font-weight:600;cursor:pointer;
+        box-shadow:0 4px 12px rgba(37,99,235,.35);
+        transition:opacity .15s;
+      " onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        Mengerti
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes pgmSlideIn {
+  from { opacity:0; transform:translateY(-24px) scale(.96); }
+  to   { opacity:1; transform:translateY(0)     scale(1);   }
+}
+#pgm-isi::-webkit-scrollbar { width:5px }
+#pgm-isi::-webkit-scrollbar-track  { background:#f1f5f9;border-radius:4px }
+#pgm-isi::-webkit-scrollbar-thumb  { background:#cbd5e1;border-radius:4px }
+</style>
+
+<script>
+(function () {
+  const STORAGE_PREFIX = 'pgm_seen_';
+
+  function pgmStorageKey(id, updatedAt) {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    return STORAGE_PREFIX + id + '_' + today;
+  }
+
+  function sudahDilihat(id, updatedAt) {
+    try {
+      return !!localStorage.getItem(pgmStorageKey(id, updatedAt));
+    } catch (e) { return false; }
+  }
+
+  function tandaiDilihat(id, updatedAt) {
+    try {
+      localStorage.setItem(pgmStorageKey(id, updatedAt), '1');
+      // Bersihkan key lama (> 7 hari) agar localStorage tidak membengkak
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      Object.keys(localStorage).forEach(k => {
+        if (!k.startsWith(STORAGE_PREFIX)) return;
+        const parts = k.split('_');
+        const dateStr = parts[parts.length - 1]; // YYYY-MM-DD
+        if (dateStr && new Date(dateStr) < cutoff) localStorage.removeItem(k);
+      });
+    } catch (e) {}
+  }
+
+  // Tampilkan overlay
+  function pgmTampil(data) {
+    document.getElementById('pgm-judul').textContent = data.judul;
+    document.getElementById('pgm-isi').textContent   = data.isi;
+    const overlay = document.getElementById('pgm-overlay');
+    overlay.style.display = 'flex';
+    // Close on backdrop click
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) pgmTutup();
+    });
+  }
+
+  // Tutup popup
+  window.pgmTutup = function (fromBtn) {
+    const checkbox = document.getElementById('pgm-jangan-lagi');
+    if (fromBtn && checkbox && checkbox.checked) {
+      // Tandai "jangan tampilkan lagi hari ini" dengan masa berlaku sampai tengah malam
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        localStorage.setItem(STORAGE_PREFIX + 'skip_' + today, '1');
+      } catch(e) {}
+    }
+    const overlay = document.getElementById('pgm-overlay');
+    overlay.style.display = 'none';
+  };
+
+  // Ambil pengumuman dari server
+  async function cekPengumuman() {
+    try {
+      const resp = await fetch('/api/pengumuman-aktif');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!data.aktif) return;
+
+      // Cek skip hari ini
+      const today = new Date().toISOString().slice(0, 10);
+      if (localStorage.getItem(STORAGE_PREFIX + 'skip_' + today)) return;
+
+      // Cek sudah dilihat hari ini
+      if (sudahDilihat(data.id, data.updated_at)) return;
+
+      // Tandai dan tampilkan
+      tandaiDilihat(data.id, data.updated_at);
+      pgmTampil(data);
+    } catch (e) {
+      // Gagal silent
+    }
+  }
+
+  // Jalankan saat DOM siap
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', cekPengumuman);
+  } else {
+    cekPengumuman();
+  }
+})();
+</script>
+<!-- ══ /POPUP PENGUMUMAN ═════════════════════════════════════════════════ -->
