@@ -678,6 +678,25 @@ def init_db():
                 VALUES (%s,%s,%s,%s,%s) ON CONFLICT (role_kode,modul_kode) DO NOTHING""",
                 (role_kode, kode, nama, grup, aktif))
 
+    # ── WEBAUTHN CREDENTIALS ─────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS webauthn_credentials (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            credential_id TEXT UNIQUE NOT NULL,
+            public_key TEXT NOT NULL,
+            sign_count BIGINT DEFAULT 0,
+            device_name TEXT DEFAULT 'Perangkat',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_used TIMESTAMP
+        )
+    """)
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_wac_user ON webauthn_credentials(user_id)")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     # ── AUDIT LOG TABLE ───────────────────────────────────────────
     _init_audit_table(cur)
     # ── OTP RESET PASSWORD TABLE ──────────────────────────────────
@@ -783,6 +802,288 @@ def q(conn):
 @app.route('/')
 def index():
     return redirect(url_for('dashboard') if 'user_id' in session else url_for('login'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── WEBAUTHN (Face ID / Fingerprint) ─────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+import base64, secrets, hashlib, struct, cbor2
+
+def _b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+
+def _b64url_decode(s: str) -> bytes:
+    s = s.replace(' ', '+')
+    pad = 4 - len(s) % 4
+    if pad != 4:
+        s += '=' * pad
+    return base64.urlsafe_b64decode(s)
+
+def _get_rp_id():
+    """RP ID = hostname tanpa port."""
+    host = request.host.split(':')[0]
+    return host
+
+def _verify_rp_id_hash(auth_data: bytes, rp_id: str) -> bool:
+    expected = hashlib.sha256(rp_id.encode()).digest()
+    return auth_data[:32] == expected
+
+
+@app.route('/webauthn/register/begin', methods=['POST'])
+@login_required
+def webauthn_register_begin():
+    """Mulai pendaftaran credential biometrik untuk user yang sudah login."""
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("SELECT id, email, nama FROM users WHERE id=%s", (uid,))
+    user = cur.fetchone()
+    cur.close(); conn.close()
+    if not user:
+        return jsonify(error='User tidak ditemukan'), 404
+
+    challenge = secrets.token_bytes(32)
+    session['webauthn_reg_challenge'] = _b64url_encode(challenge)
+
+    rp_id = _get_rp_id()
+    user_id_bytes = str(user['id']).encode()
+
+    options = {
+        'challenge': _b64url_encode(challenge),
+        'rp': {'name': 'SIAP RSSR', 'id': rp_id},
+        'user': {
+            'id': _b64url_encode(user_id_bytes),
+            'name': user['email'],
+            'displayName': user['nama'],
+        },
+        'pubKeyCredParams': [
+            {'type': 'public-key', 'alg': -7},   # ES256
+            {'type': 'public-key', 'alg': -257},  # RS256
+        ],
+        'authenticatorSelection': {
+            'authenticatorAttachment': 'platform',
+            'userVerification': 'required',
+            'residentKey': 'preferred',
+        },
+        'timeout': 60000,
+        'attestation': 'none',
+    }
+    return jsonify(options)
+
+
+@app.route('/webauthn/register/complete', methods=['POST'])
+@login_required
+def webauthn_register_complete():
+    """Selesaikan pendaftaran — simpan public key."""
+    uid = session['user_id']
+    data = request.get_json()
+    if not data:
+        return jsonify(ok=False, error='Data tidak valid'), 400
+
+    expected_challenge = session.pop('webauthn_reg_challenge', None)
+    if not expected_challenge:
+        return jsonify(ok=False, error='Challenge tidak ditemukan atau kadaluarsa'), 400
+
+    try:
+        client_data_json = _b64url_decode(data['clientDataJSON'])
+        client_data = json.loads(client_data_json)
+
+        # Verifikasi tipe
+        if client_data.get('type') != 'webauthn.create':
+            return jsonify(ok=False, error='Tipe tidak valid'), 400
+
+        # Verifikasi challenge
+        if client_data.get('challenge') != expected_challenge:
+            return jsonify(ok=False, error='Challenge tidak cocok'), 400
+
+        # Ambil credential id dan public key dari attestation object
+        attestation_obj = cbor2.loads(_b64url_decode(data['attestationObject']))
+        auth_data = attestation_obj['authData']
+
+        # Verifikasi RP ID hash
+        rp_id = _get_rp_id()
+        if not _verify_rp_id_hash(auth_data, rp_id):
+            return jsonify(ok=False, error='RP ID tidak cocok'), 400
+
+        # Parse auth_data: 32 rpIdHash + 1 flags + 4 signCount + attested credential data
+        flags = auth_data[32]
+        if not (flags & 0x01):  # UP (user present)
+            return jsonify(ok=False, error='User presence tidak terpenuhi'), 400
+
+        sign_count = struct.unpack('>I', auth_data[33:37])[0]
+        # AAGUID: 37-52, credIdLen: 53-54, credId: 55..
+        cred_id_len = struct.unpack('>H', auth_data[53:55])[0]
+        cred_id_bytes = auth_data[55:55 + cred_id_len]
+        credential_id = _b64url_encode(cred_id_bytes)
+
+        # Public key (COSE format, simpan as base64)
+        pub_key_bytes = auth_data[55 + cred_id_len:]
+        public_key_b64 = _b64url_encode(pub_key_bytes)
+
+        device_name = data.get('deviceName', 'Perangkat')[:60]
+
+        conn = get_db(); cur = q(conn)
+        # Cek duplikat credential
+        cur.execute("SELECT id FROM webauthn_credentials WHERE credential_id=%s", (credential_id,))
+        if cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify(ok=False, error='Credential sudah terdaftar'), 409
+
+        cur.execute("""INSERT INTO webauthn_credentials
+            (user_id, credential_id, public_key, sign_count, device_name)
+            VALUES (%s,%s,%s,%s,%s)""",
+            (uid, credential_id, public_key_b64, sign_count, device_name))
+        log_audit(conn, 'CREATE', 'auth',
+            deskripsi=f'Daftarkan biometrik: {device_name}', ref_id=uid, ref_table='users')
+        conn.commit(); cur.close(); conn.close()
+        return jsonify(ok=True, message='Biometrik berhasil didaftarkan!')
+
+    except Exception as e:
+        return jsonify(ok=False, error=f'Gagal: {str(e)}'), 500
+
+
+@app.route('/webauthn/login/begin', methods=['POST'])
+def webauthn_login_begin():
+    """Mulai proses login biometrik — kirim challenge ke browser."""
+    data = request.get_json() or {}
+    email = data.get('email', '').strip()
+
+    conn = get_db(); cur = q(conn)
+    if email:
+        cur.execute("""SELECT u.id, wc.credential_id
+            FROM users u JOIN webauthn_credentials wc ON u.id=wc.user_id
+            WHERE u.email=%s AND u.status='active'""", (email,))
+    else:
+        cur.execute("""SELECT u.id, wc.credential_id
+            FROM users u JOIN webauthn_credentials wc ON u.id=wc.user_id
+            WHERE u.status='active'""")
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+
+    if not rows:
+        return jsonify(error='Tidak ada credential biometrik terdaftar'), 404
+
+    challenge = secrets.token_bytes(32)
+    session['webauthn_auth_challenge'] = _b64url_encode(challenge)
+
+    allow_credentials = [
+        {'type': 'public-key', 'id': row['credential_id']}
+        for row in rows
+    ]
+
+    options = {
+        'challenge': _b64url_encode(challenge),
+        'rpId': _get_rp_id(),
+        'allowCredentials': allow_credentials,
+        'userVerification': 'required',
+        'timeout': 60000,
+    }
+    return jsonify(options)
+
+
+@app.route('/webauthn/login/complete', methods=['POST'])
+def webauthn_login_complete():
+    """Verifikasi assertion — login user jika valid."""
+    data = request.get_json()
+    if not data:
+        return jsonify(ok=False, error='Data tidak valid'), 400
+
+    expected_challenge = session.pop('webauthn_auth_challenge', None)
+    if not expected_challenge:
+        return jsonify(ok=False, error='Challenge kadaluarsa, coba lagi'), 400
+
+    try:
+        credential_id = data.get('credentialId', '')
+        client_data_json = _b64url_decode(data['clientDataJSON'])
+        client_data = json.loads(client_data_json)
+
+        # Verifikasi tipe & challenge
+        if client_data.get('type') != 'webauthn.get':
+            return jsonify(ok=False, error='Tipe tidak valid'), 400
+        if client_data.get('challenge') != expected_challenge:
+            return jsonify(ok=False, error='Challenge tidak cocok'), 400
+
+        auth_data = _b64url_decode(data['authenticatorData'])
+
+        # Verifikasi RP ID hash
+        rp_id = _get_rp_id()
+        if not _verify_rp_id_hash(auth_data, rp_id):
+            return jsonify(ok=False, error='RP ID tidak cocok'), 400
+
+        flags = auth_data[32]
+        if not (flags & 0x01):
+            return jsonify(ok=False, error='User presence tidak terpenuhi'), 400
+
+        # Ambil credential dari DB
+        conn = get_db(); cur = q(conn)
+        cur.execute("""SELECT wc.*, u.id as uid, u.nama, u.role, u.foto, u.status
+            FROM webauthn_credentials wc JOIN users u ON wc.user_id=u.id
+            WHERE wc.credential_id=%s""", (credential_id,))
+        cred = cur.fetchone()
+
+        if not cred:
+            cur.close(); conn.close()
+            return jsonify(ok=False, error='Credential tidak ditemukan'), 404
+
+        if cred['status'] != 'active':
+            cur.close(); conn.close()
+            return jsonify(ok=False, error='Akun belum aktif atau ditolak'), 403
+
+        # Update sign count & last_used
+        new_sign_count = struct.unpack('>I', auth_data[33:37])[0]
+        cur.execute("""UPDATE webauthn_credentials SET sign_count=%s, last_used=CURRENT_TIMESTAMP
+            WHERE credential_id=%s""", (new_sign_count, credential_id))
+
+        # Set session — login berhasil
+        session.update({
+            'user_id': cred['uid'],
+            'nama':    cred['nama'],
+            'role':    cred['role'],
+            'foto':    cred['foto'],
+        })
+        log_audit(conn, 'LOGIN', 'auth',
+            deskripsi=f'Login biometrik berhasil: {cred["nama"]}',
+            ref_id=cred['uid'], ref_table='users',
+            user_id=cred['uid'], user_nama=cred['nama'], user_role=cred['role'])
+        conn.commit(); cur.close(); conn.close()
+        return jsonify(ok=True, redirect=url_for('dashboard'))
+
+    except Exception as e:
+        return jsonify(ok=False, error=f'Verifikasi gagal: {str(e)}'), 500
+
+
+@app.route('/webauthn/credentials', methods=['GET'])
+@login_required
+def webauthn_list_credentials():
+    """Daftar credential biometrik milik user yang login."""
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("""SELECT id, device_name, created_at, last_used
+        FROM webauthn_credentials WHERE user_id=%s ORDER BY created_at DESC""", (uid,))
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    result = []
+    for r in rows:
+        rd = dict(r)
+        for k, v in rd.items():
+            if hasattr(v, 'isoformat'): rd[k] = v.isoformat()
+        result.append(rd)
+    return jsonify(result)
+
+
+@app.route('/webauthn/credentials/<int:cid>/hapus', methods=['POST'])
+@login_required
+def webauthn_hapus_credential(cid):
+    """Hapus credential biometrik."""
+    uid = session['user_id']
+    conn = get_db(); cur = q(conn)
+    cur.execute("DELETE FROM webauthn_credentials WHERE id=%s AND user_id=%s", (cid, uid))
+    conn.commit()
+    log_audit(conn, 'DELETE', 'auth', deskripsi=f'Hapus credential biometrik id={cid}',
+        ref_id=uid, ref_table='users')
+    cur.close(); conn.close()
+    return jsonify(ok=True)
+
 
 @app.route('/login', methods=['GET','POST'])
 def login():

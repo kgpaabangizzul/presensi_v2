@@ -65,6 +65,53 @@
         <button type="submit" class="btn-primary" style="padding:14px;font-size:15px">Simpan Perubahan</button>
       </form>
 
+
+      <!-- Divider -->
+      <div style="height:1px;background:#e2e8f0;margin:24px 0"></div>
+
+      <!-- ── Login Biometrik ── -->
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <div style="width:34px;height:34px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔐</div>
+          <div>
+            <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:0">Login Biometrik</h3>
+            <p style="font-size:11px;color:#64748b;margin:0">Face ID, Sidik Jari, atau PIN Perangkat</p>
+          </div>
+        </div>
+
+        <!-- Tidak support -->
+        <div id="bioNoSupport" style="display:none;background:#fef3c7;border-radius:12px;padding:12px 14px">
+          <p style="font-size:13px;color:#92400e;margin:0">⚠️ Browser atau perangkat ini tidak mendukung biometrik. Gunakan Chrome/Safari terbaru.</p>
+        </div>
+
+        <!-- Support -->
+        <div id="bioSupport" style="display:none">
+          <p style="font-size:13px;color:#64748b;margin:0 0 14px;line-height:1.5">
+            Daftarkan perangkat ini agar bisa login tanpa password menggunakan sidik jari, Face ID, atau PIN.
+          </p>
+          <!-- Input nama perangkat -->
+          <div style="margin-bottom:10px">
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">Nama Perangkat</label>
+            <input type="text" id="deviceNameInput" placeholder="contoh: HP Samsung Saya"
+              style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;box-sizing:border-box">
+          </div>
+          <!-- Tombol daftarkan -->
+          <button onclick="registerBiometric()" id="btnRegisterBio"
+            style="width:100%;padding:12px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;font-weight:700;font-size:14px;border:none;border-radius:12px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;gap:8px">
+            <span id="bioIcon">🔐</span>
+            <span id="bioLabel">Daftarkan Perangkat Ini</span>
+          </button>
+          <!-- Status -->
+          <div id="bioRegStatus" style="display:none;margin-top:10px;padding:10px 14px;border-radius:10px;font-size:13px;text-align:center"></div>
+        </div>
+
+        <!-- Daftar credential terdaftar -->
+        <div id="bioCredList" style="display:none;margin-top:16px">
+          <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 8px">📱 Perangkat Terdaftar:</p>
+          <div id="bioCredItems"></div>
+        </div>
+      </div>
+
       <!-- Divider -->
       <div style="height:1px;background:#e2e8f0;margin:24px 0"></div>
 
@@ -185,6 +232,153 @@ function cekMatch() {
     msg.style.color = '#dc2626';
     btn.disabled = true; btn.style.opacity = '0.5';
   }
+}
+
+// ══════════════════════════════════════════════════════════
+// ── WebAuthn Biometrik ────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+
+function b64urlEncode(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+function b64urlDecode(str) {
+  str = str.replace(/-/g,'+').replace(/_/g,'/');
+  while (str.length % 4) str += '=';
+  return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+}
+
+(async function initBio() {
+  if (!window.PublicKeyCredential) {
+    document.getElementById('bioNoSupport').style.display = 'block';
+    return;
+  }
+  var ua = navigator.userAgent;
+  var isIOS = /iPhone|iPad|iPod/i.test(ua);
+  var icon = document.getElementById('bioIcon');
+  var label = document.getElementById('bioLabel');
+  if (isIOS) {
+    icon.textContent = '';
+    label.textContent = 'Daftarkan Face ID / Touch ID';
+  } else if (/Android/i.test(ua)) {
+    icon.textContent = '👆';
+    label.textContent = 'Daftarkan Sidik Jari / Wajah';
+  }
+  document.getElementById('bioSupport').style.display = 'block';
+  loadBioCredentials();
+})();
+
+async function loadBioCredentials() {
+  try {
+    var res = await fetch('/webauthn/credentials');
+    var creds = await res.json();
+    var listEl = document.getElementById('bioCredList');
+    var itemsEl = document.getElementById('bioCredItems');
+    if (!creds || !creds.length) { listEl.style.display = 'none'; return; }
+    listEl.style.display = 'block';
+    itemsEl.innerHTML = creds.map(function(c) {
+      var lastUsed = c.last_used
+        ? new Date(c.last_used).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})
+        : 'Belum digunakan';
+      var registered = new Date(c.created_at).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:10px;background:#f8fafc;margin-bottom:8px;gap:8px">'
+        + '<div style="flex:1;min-width:0">'
+        + '<p style="font-size:13px;font-weight:700;color:#1e293b;margin:0">📱 ' + c.device_name + '</p>'
+        + '<p style="font-size:11px;color:#94a3b8;margin:2px 0 0">Daftar: ' + registered + ' &nbsp;·&nbsp; Terakhir: ' + lastUsed + '</p>'
+        + '</div>'
+        + '<button onclick="hapusBioCredential(' + c.id + ',this)"'
+        + ' style="background:#fee2e2;color:#991b1b;border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">'
+        + '🗑 Hapus</button>'
+        + '</div>';
+    }).join('');
+  } catch(e) { console.log('loadBioCredentials error:', e); }
+}
+
+async function registerBiometric() {
+  var btn = document.getElementById('btnRegisterBio');
+  var status = document.getElementById('bioRegStatus');
+  var deviceName = document.getElementById('deviceNameInput').value.trim()
+    || (navigator.userAgent.match(/(Android|iPhone|iPad|Mac|Windows)/i) || ['Perangkat'])[0];
+
+  btn.disabled = true; btn.style.opacity = '0.7';
+  showBioStatus('⏳ Menginisialisasi...', '#e0f2fe', '#0369a1');
+
+  try {
+    var res = await fetch('/webauthn/register/begin', {method:'POST'});
+    if (!res.ok) {
+      var err = await res.json();
+      showBioStatus('❌ ' + (err.error || 'Gagal memulai'), '#fee2e2', '#991b1b');
+      return;
+    }
+    var options = await res.json();
+
+    var publicKey = {
+      challenge: b64urlDecode(options.challenge),
+      rp: options.rp,
+      user: {
+        id: b64urlDecode(options.user.id),
+        name: options.user.name,
+        displayName: options.user.displayName,
+      },
+      pubKeyCredParams: options.pubKeyCredParams,
+      authenticatorSelection: options.authenticatorSelection,
+      timeout: options.timeout,
+      attestation: options.attestation || 'none',
+    };
+
+    showBioStatus('🔐 Gunakan biometrik perangkat Anda...', '#f0fdf4', '#166534');
+    var credential = await navigator.credentials.create({publicKey: publicKey});
+
+    var payload = {
+      clientDataJSON: b64urlEncode(credential.response.clientDataJSON),
+      attestationObject: b64urlEncode(credential.response.attestationObject),
+      deviceName: deviceName,
+    };
+    var completeRes = await fetch('/webauthn/register/complete', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    var result = await completeRes.json();
+
+    if (result.ok) {
+      showBioStatus('✅ ' + (result.message || 'Biometrik berhasil didaftarkan!'), '#d1fae5', '#065f46');
+      document.getElementById('deviceNameInput').value = '';
+      loadBioCredentials();
+    } else {
+      showBioStatus('❌ ' + (result.error || 'Gagal mendaftarkan'), '#fee2e2', '#991b1b');
+    }
+  } catch(e) {
+    if (e.name === 'NotAllowedError') showBioStatus('⚠️ Pendaftaran dibatalkan.', '#fef3c7', '#92400e');
+    else if (e.name === 'InvalidStateError') showBioStatus('⚠️ Perangkat ini sudah terdaftar sebelumnya.', '#fef3c7', '#92400e');
+    else showBioStatus('❌ ' + e.message, '#fee2e2', '#991b1b');
+  } finally {
+    btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+
+async function hapusBioCredential(cid, btn) {
+  if (!confirm('Hapus perangkat biometrik ini?')) return;
+  btn.disabled = true;
+  try {
+    var res = await fetch('/webauthn/credentials/' + cid + '/hapus', {method:'POST'});
+    var result = await res.json();
+    if (result.ok) {
+      showBioStatus('✅ Perangkat berhasil dihapus.', '#d1fae5', '#065f46');
+      loadBioCredentials();
+    } else {
+      alert('Gagal menghapus: ' + (result.error || ''));
+    }
+  } catch(e) { alert('Error: ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+function showBioStatus(msg, bg, color) {
+  var el = document.getElementById('bioRegStatus');
+  el.style.display = 'block';
+  el.style.background = bg;
+  el.style.color = color;
+  el.textContent = msg;
 }
 </script>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Login · Sistem Informasi Pegawai{% endblock %}
 {% block body %}
 <div style="min-height:100dvh;display:flex;background:linear-gradient(145deg,#0f172a 0%,#1e3a5f 60%,#0f4c81 100%)">
+
   <!-- Desktop left panel -->
   <div class="hidden lg:flex" style="width:45%;flex-direction:column;align-items:center;justify-content:center;padding:48px;color:#fff;position:relative;overflow:hidden">
     <div style="position:absolute;inset:0;opacity:.06">
@@ -12,8 +13,8 @@
       <div style="width:80px;height:80px;background:rgba(255,255,255,.15);border-radius:24px;display:flex;align-items:center;justify-content:center;margin:0 auto 28px;backdrop-filter:blur(8px)">
         <svg style="width:40px;height:40px;color:#fff" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
       </div>
-      <h1 style="font-size:36px;font-weight:800;margin-bottom:10px">SIP RSSR</h1>
-      <p style="color:#93c5fd;font-size:16px;margin-bottom:36px">Sistem Informasi Pegawai RS Slamet Riyadi</p>
+      <h1 style="font-size:36px;font-weight:800;margin-bottom:10px">SIAP RSSR</h1>
+      <p style="color:#93c5fd;font-size:16px;margin-bottom:36px">Sistem Informasi Absensi Pegawai RS Slamet Riyadi</p>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
         <div style="background:rgba(255,255,255,.1);border-radius:16px;padding:16px;backdrop-filter:blur(8px)">
           <div style="font-size:24px;margin-bottom:6px">📍</div>
@@ -25,15 +26,16 @@
         </div>
         <div style="background:rgba(255,255,255,.1);border-radius:16px;padding:16px;backdrop-filter:blur(8px)">
           <div style="font-size:24px;margin-bottom:6px">📊</div>
-          <p style="font-size:12px;color:#bfdbfe;font-weight:500">Laporan dan Audit LOG</p>
+          <p style="font-size:12px;color:#bfdbfe;font-weight:500">Laporan & Audit Log</p>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Right/full login form -->
+  <!-- Right / full-width on mobile -->
   <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px">
     <div style="width:100%;max-width:400px">
+
       <!-- Mobile logo -->
       <div class="lg:hidden" style="text-align:center;margin-bottom:28px">
         <div style="width:64px;height:64px;background:rgba(255,255,255,.15);border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;backdrop-filter:blur(8px)">
@@ -42,31 +44,233 @@
         <h1 style="color:#fff;font-size:24px;font-weight:800">SIAP RSSR</h1>
         <p style="color:#93c5fd;font-size:13px;margin-top:4px">Sistem Informasi Absensi Pegawai</p>
       </div>
+
       <!-- Card -->
       <div style="background:#fff;border-radius:24px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
         <h2 style="font-size:22px;font-weight:700;color:#1e293b;margin-bottom:4px">Selamat Datang 👋</h2>
-        <p style="color:#94a3b8;font-size:14px;margin-bottom:28px">Masuk ke akun Anda</p>
-        <form method="POST" style="display:flex;flex-direction:column;gap:16px">
+        <p style="color:#94a3b8;font-size:14px;margin-bottom:24px">Masuk ke akun Anda</p>
+
+        <!-- Flash messages -->
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+          {% for cat, msg in msgs %}
+          <div style="padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px;
+            background:{{'#d1fae5' if cat=='success' else '#fee2e2' if cat=='error' else '#fef3c7'}};
+            color:{{'#065f46' if cat=='success' else '#991b1b' if cat=='error' else '#92400e'}}">
+            {{ msg }}
+          </div>
+          {% endfor %}
+        {% endwith %}
+
+        <!-- Biometric button (shown if supported) -->
+        <div id="biometricSection" style="display:none;margin-bottom:20px">
+          <button id="btnBiometric" onclick="loginBiometric()"
+            style="width:100%;padding:14px;border-radius:14px;border:2px solid #e2e8f0;background:#f8fafc;
+                   color:#1e293b;font-size:15px;font-weight:700;cursor:pointer;
+                   display:flex;align-items:center;justify-content:center;gap:10px;transition:.2s"
+            onmouseover="this.style.borderColor='#3b82f6';this.style.background='#eff6ff'"
+            onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#f8fafc'">
+            <span id="biometricIcon" style="font-size:22px">🔐</span>
+            <span id="biometricLabel">Masuk dengan Biometrik</span>
+          </button>
+          <!-- Status biometric -->
+          <div id="biometricStatus" style="display:none;margin-top:10px;padding:10px 14px;border-radius:10px;font-size:13px;text-align:center"></div>
+
+          <!-- Divider -->
+          <div style="display:flex;align-items:center;gap:12px;margin:16px 0">
+            <div style="flex:1;height:1px;background:#e2e8f0"></div>
+            <span style="font-size:12px;color:#94a3b8;font-weight:600">atau dengan email</span>
+            <div style="flex:1;height:1px;background:#e2e8f0"></div>
+          </div>
+        </div>
+
+        <!-- Email/password form -->
+        <form method="POST" style="display:flex;flex-direction:column;gap:16px" id="loginForm">
           <div>
             <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Email</label>
-            <input type="email" name="email" required placeholder="email@gmail.com" class="input-field" style="font-size:16px">
+            <input type="email" name="email" id="emailInput" required placeholder="email@gmail.com"
+              class="input-field" style="font-size:16px" autocomplete="username">
           </div>
           <div>
             <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Password</label>
-            <input type="password" name="password" required placeholder="••••••••" class="input-field" style="font-size:16px">
+            <div style="position:relative">
+              <input type="password" name="password" id="passwordInput" required placeholder="••••••••"
+                class="input-field" style="font-size:16px;padding-right:44px" autocomplete="current-password">
+              <button type="button" onclick="togglePw()" tabindex="-1"
+                style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;font-size:18px"
+                id="pwToggle">👁</button>
+            </div>
           </div>
-          <button type="submit" class="btn-primary" style="width:100%;padding:14px;font-size:15px;margin-top:4px">
+          <button type="submit" class="btn-primary" style="width:100%;padding:14px;font-size:15px">
             Masuk Sekarang
           </button>
         </form>
+
         <div style="text-align:center;margin-top:20px">
           <span style="color:#94a3b8;font-size:13px">Belum punya akun? </span>
           <a href="/register" style="color:#2563eb;font-weight:600;font-size:13px;text-decoration:none">Daftar</a><br>
-          <a href="{{ url_for('lupa_password') }}"style="color:#eb2525;font-weight:600;font-size:13px;text-decoration:none">Lupa Password?</a>
+          <a href="{{ url_for('lupa_password') }}" style="color:#eb2525;font-weight:600;font-size:13px;text-decoration:none">Lupa Password?</a>
         </div>
-        
-        </div>
+      </div>
+
+      <!-- Info hint for first-time setup -->
+      <div id="setupHint" style="display:none;margin-top:16px;background:rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;backdrop-filter:blur(8px)">
+        <p style="color:#bfdbfe;font-size:12px;margin:0;text-align:center">
+          💡 Untuk mengaktifkan login biometrik, login dulu dengan email lalu daftarkan perangkat ini di menu <strong>Profil → Keamanan</strong>
+        </p>
+      </div>
     </div>
   </div>
 </div>
+
+<script>
+// ── Deteksi dukungan WebAuthn ──────────────────────────────────────────────
+(function() {
+  if (!window.PublicKeyCredential) return; // Browser tidak support
+
+  var ua = navigator.userAgent;
+  var isAndroid = /Android/i.test(ua);
+  var isIOS = /iPhone|iPad|iPod/i.test(ua);
+  var isMobile = isAndroid || isIOS;
+
+  // Set ikon sesuai platform
+  var icon = document.getElementById('biometricIcon');
+  var label = document.getElementById('biometricLabel');
+  if (isIOS) {
+    icon.textContent = ''; // Face ID / Touch ID symbol
+    label.textContent = 'Masuk dengan Face ID / Touch ID';
+  } else if (isAndroid) {
+    icon.textContent = '👆';
+    label.textContent = 'Masuk dengan Sidik Jari / Wajah';
+  } else {
+    icon.textContent = '🔐';
+    label.textContent = 'Masuk dengan Biometrik / PIN';
+  }
+
+  // Cek apakah ada credential terdaftar dengan conditional mediation
+  PublicKeyCredential.isConditionalMediationAvailable
+    ? PublicKeyCredential.isConditionalMediationAvailable().then(function(avail) {
+        showBiometricSection(true);
+      }).catch(function() { showBiometricSection(true); })
+    : showBiometricSection(true);
+})();
+
+function showBiometricSection(show) {
+  document.getElementById('biometricSection').style.display = show ? 'block' : 'none';
+  document.getElementById('setupHint').style.display = show ? 'block' : 'none';
+}
+
+// ── Helpers base64url ──────────────────────────────────────────────────────
+function b64urlEncode(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+function b64urlDecode(str) {
+  str = str.replace(/-/g,'+').replace(/_/g,'/');
+  while (str.length % 4) str += '=';
+  return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+}
+
+// ── Biometric Login ────────────────────────────────────────────────────────
+async function loginBiometric() {
+  var btn = document.getElementById('btnBiometric');
+  var status = document.getElementById('biometricStatus');
+  var email = document.getElementById('emailInput').value.trim();
+
+  btn.disabled = true;
+  btn.style.opacity = '0.7';
+  showStatus('⏳ Memverifikasi identitas...', '#e0f2fe', '#0369a1');
+
+  try {
+    // 1. Minta challenge dari server
+    var res = await fetch('/webauthn/login/begin', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: email})
+    });
+
+    if (!res.ok) {
+      var err = await res.json();
+      if (res.status === 404) {
+        showStatus('❌ Biometrik belum terdaftar. Login dengan email lalu daftarkan di Profil.', '#fee2e2', '#991b1b');
+      } else {
+        showStatus('❌ ' + (err.error || 'Gagal memulai autentikasi'), '#fee2e2', '#991b1b');
+      }
+      return;
+    }
+
+    var options = await res.json();
+
+    // 2. Konversi challenge dan allowCredentials
+    var publicKey = {
+      challenge: b64urlDecode(options.challenge),
+      rpId: options.rpId,
+      userVerification: options.userVerification || 'required',
+      timeout: options.timeout || 60000,
+      allowCredentials: (options.allowCredentials || []).map(function(c) {
+        return {type: c.type, id: b64urlDecode(c.id)};
+      })
+    };
+
+    // 3. Trigger biometrik di perangkat
+    showStatus('🔐 Gunakan biometrik perangkat Anda...', '#f0fdf4', '#166534');
+    var credential = await navigator.credentials.get({publicKey: publicKey});
+
+    // 4. Kirim hasil ke server
+    var payload = {
+      credentialId: b64urlEncode(credential.rawId),
+      clientDataJSON: b64urlEncode(credential.response.clientDataJSON),
+      authenticatorData: b64urlEncode(credential.response.authenticatorData),
+      signature: b64urlEncode(credential.response.signature),
+      userHandle: credential.response.userHandle ? b64urlEncode(credential.response.userHandle) : null,
+    };
+
+    var verifyRes = await fetch('/webauthn/login/complete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    var result = await verifyRes.json();
+
+    if (result.ok) {
+      showStatus('✅ Login berhasil! Mengalihkan...', '#d1fae5', '#065f46');
+      setTimeout(function() { window.location.href = result.redirect || '/dashboard'; }, 600);
+    } else {
+      showStatus('❌ ' + (result.error || 'Verifikasi gagal'), '#fee2e2', '#991b1b');
+    }
+
+  } catch (e) {
+    if (e.name === 'NotAllowedError') {
+      showStatus('⚠️ Autentikasi dibatalkan atau timeout.', '#fef3c7', '#92400e');
+    } else if (e.name === 'InvalidStateError') {
+      showStatus('⚠️ Credential tidak valid, coba login dengan email.', '#fef3c7', '#92400e');
+    } else {
+      showStatus('❌ Error: ' + e.message, '#fee2e2', '#991b1b');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+function showStatus(msg, bg, color) {
+  var el = document.getElementById('biometricStatus');
+  el.style.display = 'block';
+  el.style.background = bg;
+  el.style.color = color;
+  el.textContent = msg;
+}
+
+// ── Toggle password visibility ─────────────────────────────────────────────
+function togglePw() {
+  var inp = document.getElementById('passwordInput');
+  var btn = document.getElementById('pwToggle');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    inp.type = 'password';
+    btn.textContent = '👁';
+  }
+}
+</script>
 {% endblock %}
