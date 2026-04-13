@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#1e3a5f">
+<meta name="application-name" content="SIAP RSSR">
+<meta name="apple-mobile-web-app-title" content="SIAP RSSR">
+<link rel="manifest" href="/static/manifest.json">
 <title>{% block title %}SIP RSSR{% endblock %}</title>
 {% if g.settings and g.settings.logo %}
 <link rel="icon" type="image/png" href="/static/uploads/logo/{{ g.settings.logo }}">
@@ -125,3 +128,156 @@
 {% block body %}{% endblock %}
 </body>
 </html>
+<!-- ═══════════════════════════════════════════════════════════════
+     PWA Install Banner
+════════════════════════════════════════════════════════════════ -->
+<style>
+#pwa-banner{
+  display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;
+  padding:14px 16px calc(14px + env(safe-area-inset-bottom,0px));
+  background:#fff;border-top:1px solid #e2e8f0;
+  box-shadow:0 -4px 24px rgba(0,0,0,.12);
+  animation:slideUp .3s ease;
+}
+#pwa-banner.show{display:flex;align-items:center;gap:12px}
+#pwa-banner .pwa-icon{
+  width:48px;height:48px;border-radius:14px;
+  background:linear-gradient(135deg,#1e3a5f,#2563eb);
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;flex-shrink:0;
+}
+#pwa-banner .pwa-text{flex:1;min-width:0}
+#pwa-banner .pwa-text strong{display:block;font-size:14px;font-weight:700;color:#1e293b}
+#pwa-banner .pwa-text span{font-size:12px;color:#64748b}
+#pwa-banner .pwa-actions{display:flex;gap:8px;flex-shrink:0}
+#pwa-btn-install{
+  background:#2563eb;color:#fff;border:none;cursor:pointer;
+  padding:9px 16px;border-radius:10px;font-size:13px;font-weight:700;
+  white-space:nowrap;transition:all .18s;
+}
+#pwa-btn-install:hover{background:#1d4ed8}
+#pwa-btn-dismiss{
+  background:#f1f5f9;color:#64748b;border:none;cursor:pointer;
+  padding:9px 12px;border-radius:10px;font-size:13px;font-weight:600;
+  transition:all .18s;
+}
+#pwa-btn-dismiss:hover{background:#e2e8f0}
+/* iOS instruction overlay */
+#pwa-ios-hint{
+  display:none;position:fixed;inset:0;z-index:10000;
+  background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+  align-items:flex-end;justify-content:center;padding:16px;
+}
+#pwa-ios-hint.show{display:flex}
+#pwa-ios-hint .hint-box{
+  background:#fff;border-radius:20px;padding:24px;max-width:360px;width:100%;
+  text-align:center;animation:slideUp .3s ease;
+}
+#pwa-ios-hint .hint-box h3{font-size:17px;font-weight:700;color:#1e293b;margin-bottom:8px}
+#pwa-ios-hint .hint-box p{font-size:13px;color:#64748b;line-height:1.6;margin-bottom:16px}
+#pwa-ios-hint .hint-steps{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;text-align:left}
+#pwa-ios-hint .hint-step{display:flex;align-items:center;gap:10px;font-size:13px;color:#374151}
+#pwa-ios-hint .hint-step span{font-size:20px;width:28px;text-align:center;flex-shrink:0}
+#pwa-ios-arrow{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);font-size:28px;animation:bounce .8s infinite}
+@keyframes bounce{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(8px)}}
+</style>
+
+<!-- Banner -->
+<div id="pwa-banner">
+  <div class="pwa-icon">📋</div>
+  <div class="pwa-text">
+    <strong>Tambahkan ke Layar Utama</strong>
+    <span>Akses SIP RSSR lebih cepat seperti aplikasi</span>
+  </div>
+  <div class="pwa-actions">
+    <button id="pwa-btn-dismiss" onclick="pwaDismiss()">Nanti</button>
+    <button id="pwa-btn-install" onclick="pwaInstall()">Pasang</button>
+  </div>
+</div>
+
+<!-- iOS Hint Overlay -->
+<div id="pwa-ios-hint">
+  <div class="hint-box">
+    <div style="font-size:40px;margin-bottom:12px">📱</div>
+    <h3>Tambahkan ke Layar Utama</h3>
+    <p>Ikuti langkah berikut untuk memasang SIP RSSR di perangkat Anda:</p>
+    <div class="hint-steps">
+      <div class="hint-step"><span>1️⃣</span> Ketuk tombol <strong>Bagikan</strong> (ikon kotak + panah atas) di bawah browser</div>
+      <div class="hint-step"><span>2️⃣</span> Gulir ke bawah dan pilih <strong>"Tambahkan ke Layar Utama"</strong></div>
+      <div class="hint-step"><span>3️⃣</span> Ketuk <strong>Tambahkan</strong> untuk konfirmasi</div>
+    </div>
+    <button class="btn-primary" style="width:100%" onclick="document.getElementById('pwa-ios-hint').classList.remove('show')">Mengerti</button>
+  </div>
+  <div id="pwa-ios-arrow">👇</div>
+</div>
+
+<script>
+(function() {
+  var DISMISS_KEY = 'pwa_dismissed_until';
+  var deferredPrompt = null;
+  var ua = navigator.userAgent;
+  var isIOS = /iPhone|iPad|iPod/i.test(ua) && !window.MSStream;
+  var isAndroid = /Android/i.test(ua);
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                  || window.navigator.standalone === true;
+
+  // Sudah installed → jangan tampilkan
+  if (isStandalone) return;
+
+  // Cek dismiss (simpan 7 hari)
+  var until = localStorage.getItem(DISMISS_KEY);
+  if (until && Date.now() < parseInt(until)) return;
+
+  function showBanner() {
+    document.getElementById('pwa-banner').classList.add('show');
+  }
+
+  // ── Android/Chrome: pakai beforeinstallprompt ──────────────────────────
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    // Tunda sebentar agar halaman sudah selesai render
+    setTimeout(showBanner, 2500);
+  });
+
+  // ── iOS Safari: tidak ada event, tampilkan hint manual ─────────────────
+  if (isIOS) {
+    var isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|OPiOS/i.test(ua);
+    if (isSafari) {
+      setTimeout(showBanner, 2500);
+    }
+  }
+
+  // ── Tombol Pasang ──────────────────────────────────────────────────────
+  window.pwaInstall = function() {
+    if (isIOS) {
+      document.getElementById('pwa-banner').classList.remove('show');
+      document.getElementById('pwa-ios-hint').classList.add('show');
+      return;
+    }
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(function(choice) {
+      deferredPrompt = null;
+      document.getElementById('pwa-banner').classList.remove('show');
+      if (choice.outcome === 'accepted') {
+        localStorage.setItem(DISMISS_KEY, Date.now() + 30*24*60*60*1000); // 30 hari
+      }
+    });
+  };
+
+  // ── Tombol Nanti (simpan 7 hari) ───────────────────────────────────────
+  window.pwaDismiss = function() {
+    localStorage.setItem(DISMISS_KEY, Date.now() + 7*24*60*60*1000);
+    document.getElementById('pwa-banner').classList.remove('show');
+  };
+
+  // ── Register Service Worker ────────────────────────────────────────────
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/static/sw.js')
+        .catch(function(e) { console.warn('SW register failed:', e); });
+    });
+  }
+})();
+</script>

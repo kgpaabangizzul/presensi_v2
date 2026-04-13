@@ -3884,6 +3884,22 @@ def admin_test_notif():
     return jsonify(success=False, message=err)
 
 
+# ── PWA: Service Worker harus diakses dari root scope '/' ────────────────────
+@app.route('/sw.js')
+def service_worker():
+    response = app.send_static_file('sw.js')
+    response.headers['Content-Type']           = 'application/javascript'
+    response.headers['Service-Worker-Allowed'] = '/'
+    response.headers['Cache-Control']           = 'no-cache, no-store, must-revalidate'
+    return response
+
+@app.route('/manifest.json')
+def pwa_manifest():
+    response = app.send_static_file('manifest.json')
+    response.headers['Content-Type'] = 'application/manifest+json'
+    return response
+
+
 # Jalankan init_db saat modul dimuat (termasuk saat dijalankan via Gunicorn)
 with app.app_context():
     try:
