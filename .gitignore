@@ -10,6 +10,8 @@ static/uploads/ttd/*
 !static/uploads/ttd/.gitkeep
 static/uploads/surat/*
 !static/uploads/surat/.gitkeep
+static/icons/*
+!static/icons/.gitkeep
 
 # Python
 __pycache__/

@@ -216,8 +216,14 @@
   var DISMISS_KEY = 'pwa_dismissed_until';
   var deferredPrompt = null;
   var ua = navigator.userAgent;
-  var isIOS = /iPhone|iPad|iPod/i.test(ua) && !window.MSStream;
+
+  // ── Deteksi iOS lebih robust (iPad OS 13+ pakai UA desktop) ──────────
+  var isIOS = /iPhone|iPad|iPod/i.test(ua)
+           || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+           || (typeof navigator.standalone !== 'undefined');
   var isAndroid = /Android/i.test(ua);
+  var isMobile  = isIOS || isAndroid || /Mobi|Mobile/i.test(ua);
+
   var isStandalone = window.matchMedia('(display-mode: standalone)').matches
                   || window.navigator.standalone === true;
 
@@ -236,16 +242,24 @@
   window.addEventListener('beforeinstallprompt', function(e) {
     e.preventDefault();
     deferredPrompt = e;
-    // Tunda sebentar agar halaman sudah selesai render
     setTimeout(showBanner, 2500);
   });
 
-  // ── iOS Safari: tidak ada event, tampilkan hint manual ─────────────────
+  // ── iOS Safari: deteksi manual, tampilkan banner + hint ───────────────
+  // iOS tidak punya beforeinstallprompt, harus dipaksa manual
   if (isIOS) {
-    var isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|OPiOS/i.test(ua);
-    if (isSafari) {
+    var isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|OPiOS|EdgiOS/i.test(ua);
+    // iPad OS 13+ UA sama dengan Mac, tapi punya maxTouchPoints > 1
+    var isIpadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    if (isSafari || isIpadOS) {
       setTimeout(showBanner, 2500);
     }
+  }
+
+  // ── Fallback: semua mobile yang belum installed & belum dismiss ────────
+  // Jaga-jaga jika UA tidak match di atas
+  if (!isIOS && !isAndroid && isMobile) {
+    setTimeout(showBanner, 2500);
   }
 
   // ── Tombol Pasang ──────────────────────────────────────────────────────
