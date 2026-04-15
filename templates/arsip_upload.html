@@ -9,7 +9,7 @@
 .input-f:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
 .drop-zone{border:2px dashed #bfdbfe;border-radius:12px;padding:28px;text-align:center;background:#f0f9ff;cursor:pointer;transition:.2s}
 .drop-zone.dragover{border-color:#2563eb;background:#dbeafe}
-.btn-submit{width:100%;padding:13px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-weight:800;font-size:15px;border:none;border-radius:12px;cursor:pointer}
+.btn-submit{width:100%;padding:14px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-weight:800;font-size:15px;border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.35)}
 .btn-submit:active{transform:scale(.99)}
 </style>
 
@@ -75,7 +75,7 @@
     </div>
 
     <!-- Keterangan -->
-    <div style="margin-bottom:14px">
+    <div style="margin-bottom:4px">
       <label class="field-label">Keterangan</label>
       <textarea name="keterangan" class="input-f" rows="3" placeholder="Deskripsi singkat isi dokumen (opsional)" style="resize:vertical"></textarea>
     </div>
@@ -100,7 +100,14 @@
     <input type="file" id="fileInput" name="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="showFile(this)">
   </div>
 
-  <button type="submit" class="btn-submit">📤 Upload Arsip</button>
+  <!-- ✅ FIX: Tombol submit di dalam form-card agar tidak tertutup navbar -->
+  <div class="form-card" style="padding:16px">
+    <button type="submit" class="btn-submit">📤 Upload Arsip</button>
+  </div>
+
+  <!-- Spacer agar tombol tidak tertutup bottom navbar di mobile -->
+  <div style="height:calc(72px + env(safe-area-inset-bottom, 16px))"></div>
+
 </form>
 
 <script>
